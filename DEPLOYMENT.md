@@ -30,25 +30,67 @@ asumidos. Ninguno difiere de lo esperado.
 
 ## 2. Presupuesto
 
-Medido con `forge script` simulando contra el RPC real, no estimado a ojo.
+**Estimado por simulación, no medido en cadena.** Las cifras salen de `forge script` simulando
+contra el RPC real (chain id 1874 confirmado) e incluyen el colchón que `forge` añade sobre el
+gas estimado. No son recibos. La columna en WBT las convierte al base fee mínimo real de la red
+(5 gwei); `forge` estima a 10 gwei, así que él mismo pedirá el doble.
+
+### Coste único: desplegar
 
 | Contrato | Gas | WBT @ 5 gwei |
 |---|---:|---:|
-| AttestationSource × 3 | 4 900 750 | 0,024504 |
-| PriceRouter | 2 162 238 | 0,010811 |
-| RouteGovernor | 1 573 101 | 0,007866 |
-| CotejoAggregatorAdapter × 3 | 1 599 689 | 0,007998 |
-| `setGovernor` | 65 581 | 0,000328 |
-| **Fase 1 total** | **10 301 359** | **0,051507** |
-| Fase 2 (configuración + 3 rutas) | ~1 700 000 | ~0,0085 |
-| Fase 3 (ejecutar 3 rutas) | ~900 000 | ~0,0045 |
-| **Total** | **~12,9 M** | **~0,065** |
+| AttestationSource × 5 | 9 108 585 | 0,045543 |
+| PriceRouter | 2 451 039 | 0,012255 |
+| RouteGovernor | 1 863 825 | 0,009319 |
+| CotejoAggregatorAdapter × 1 | 533 250 | 0,002666 |
+| `setGovernor` | 65 457 | 0,000327 |
+| **Fase 1 total** | **14 022 156** | **0,070111** |
 
-**Cabe entero en una sola reclamación del faucet**, con ~7× de margen sobre los 0,5 WBT. Con el
-buffer conservador de `forge` (estima a 10 gwei, el doble del base fee) sigue siendo ~0,13 WBT.
+Fases 2 y 3 (configurar fuentes, proponer la ruta, ejecutarla tras el timelock) **todavía no
+son simulables**: sus scripts exigen que las direcciones de la fase 1 tengan bytecode en cadena,
+y no lo tienen. Se medirán cuando la fase 1 aterrice. No hay una estimación aquí porque
+inventarla sería peor que su ausencia.
 
-El cuello de botella real **no es el gas: es el timelock de 48 h** entre proponer y ejecutar
+La fase 1 cabe entera en una sola reclamación del faucet (0,5 WBT), con ~7× de margen.
+
+### Coste recurrente: mantener el latido
+
+Esto es lo que de verdad limita el despliegue, y la versión anterior de este documento no lo
+tenía en cuenta.
+
+| Concepto | Valor | Origen |
+|---|---:|---|
+| `submit` en régimen permanente | 34 526 gas | medido en `test_steadyStateSubmitFitsTheFaucetBudget` |
+| `submit` como transacción | ~61 222 gas | + 21 000 intrínseco + calldata a 16 gas/byte |
+| Latidos por día | 96 | heartbeat de 900 s |
+| `submit` por día | 480 | 96 × 5 fuentes × 1 par |
+| **Coste diario** | **~0,147 WBT** | 480 × 61 222 × 5 gwei |
+
+Cabe en el faucet —es el 29 % del tope diario— pero **es un coste perpetuo, no un pago único**.
+Mantener el oráculo vivo tres semanas cuesta ~3,1 WBT, lo que obliga a reclamar el faucet cada
+tres días como mínimo. La reclamación es manual y pasa por OAuth de GitHub: no se puede
+automatizar. Un latido que se detiene produce `Cotejo__StalePrice`, que es el comportamiento
+correcto y es indistinguible, para quien mire desde fuera, de un despliegue roto.
+
+**Ese número no incluye la tarifa de datos L1.** Whitechain es una OP Stack y cobra un
+componente L1 por transacción que ninguna simulación local observa. La cifra real solo sale de
+un recibo. Presupuestar al doble hasta tenerlo.
+
+El otro cuello de botella **no es el gas: es el timelock de 48 h** entre proponer y ejecutar
 rutas. El despliegue es una operación de tres días como mínimo, por diseño (INV-4).
+
+### Una simulación ensucia el fichero de estado
+
+`forge script` sin `--broadcast` ejecuta igualmente los `vm.writeJson` del script, así que una
+simulación deja `deployments/1874.json` lleno de direcciones que no existen en ninguna cadena.
+Tras cualquier ensayo:
+
+```bash
+git checkout -- deployments/1874.json
+```
+
+Sin ese paso el repositorio anuncia un despliegue que no ocurrió, que es exactamente la
+afirmación que este proyecto no puede permitirse.
 
 ### Por qué los scripts son reanudables de todos modos
 
@@ -86,9 +128,11 @@ Variables de entorno (ninguna se versiona):
 ```bash
 export COTEJO_OWNER=0x...              # multisig en producción; por defecto, el deployer
 export COTEJO_GUARDIAN=0x...           # único rol que puede pausar
-export COTEJO_REPORTER_WGROUP=0x...    # clave del reporter de cada grupo
-export COTEJO_REPORTER_BINANCE=0x...
-export COTEJO_REPORTER_KRAKEN=0x...
+export COTEJO_REPORTER_1=0x...         # una clave de reporter por grupo de operador
+export COTEJO_REPORTER_2=0x...         # las cinco son nuestras en este despliegue:
+export COTEJO_REPORTER_3=0x...         # la independencia de operador la imponen los
+export COTEJO_REPORTER_4=0x...         # contratos y todavía no es real
+export COTEJO_REPORTER_5=0x...
 export COTEJO_MIN_DEPTH_USD=250000
 ```
 
@@ -126,24 +170,29 @@ forge script script/02_Configure.s.sol:Configure \
   --account cotejo-deployer --broadcast --slow
 ```
 
-Habilita los tres activos en las tres fuentes, registra las claves de reporter, nombra al
-guardián, y propone una ruta por par con los parámetros acordados:
+Habilita el par en las cinco fuentes, registra las claves de reporter, nombra al guardián, y
+propone la ruta con los parámetros acordados:
 
 ```
 minSources                 = 3
 maxDeviationBps            = 200
-maxStalenessSeconds        = 900
-reporterHeartbeatSeconds   = 300     # D2 exige staleness >= 2 × heartbeat
+maxStalenessSeconds        = 1800
+reporterHeartbeatSeconds   = 900     # D2 exige staleness >= 2 × heartbeat
 maxSourcesPerOperatorGroup = 1       # INV-5
 ```
+
+El heartbeat es 900 s y no 300 s por presupuesto, no por preferencia: ver la sección 2. Cinco
+fuentes sobre un par cada 900 s cuestan ~0,147 WBT/día; a 300 s sobre tres pares no cabe en el
+faucet.
 
 El orden lo imponen los contratos, no la preferencia: `proposeRoute` ejecuta `validateRoute`,
 que exige que toda fuente nombrada responda `supportsAsset(asset) == true`, así que `setAsset`
 tiene que aterrizar antes o la propuesta revierte.
 
-> Con `minSources = 3` y un operador por fuente, **los tres grupos deben estar reportando para
-> que exista precio**. Es la postura pretendida: el oráculo se niega a responder hasta que el
-> conjunto completo de reporters está vivo.
+> Con `minSources = 3` sobre cinco fuentes y un operador por fuente, **tres de los cinco grupos
+> deben estar reportando para que exista precio**. Los dos de margen son deliberados: con
+> exactamente tres fuentes, un solo tropiezo del keeper deja el par sin precio, y una negativa
+> por falta de quórum es indistinguible desde fuera de un despliegue caído.
 
 ### Fase 3 — ejecutar rutas (48 h después)
 
@@ -198,8 +247,8 @@ forge verify-contract <address> src/sources/AttestationSource.sol:AttestationSou
   --constructor-args $(cast abi-encode \
     "constructor(string,string,bytes32,bytes32,address)" \
     "Cotejo" "1" \
-    $(cast keccak "cotejo.source.wgroup") \
-    $(cast keccak "wgroup") \
+    $(cast keccak "cotejo.source.cotejo-keeper-1") \
+    $(cast keccak "cotejo-keeper-1") \
     <owner-address>)
 ```
 
@@ -256,7 +305,7 @@ pásalas por URL:
 panel/index.html?router=0x...&governor=0x...
 ```
 
-Muestra, por par: precio y bloque de lectura, las tres fuentes con su operador, precio
+Muestra, por par: precio y bloque de lectura, las cinco fuentes con su operador, precio
 individual, antigüedad en segundos, profundidad USD reportada y firmante; la desviación actual
 en bps con el margen que queda antes de que el router revierta; cualquier cambio de ruta
 pendiente con cuenta atrás; y el estado de pausa. Cada dirección enlaza al explorer.
@@ -291,8 +340,8 @@ forge script script/LiveTest.s.sol:LiveTest \
 
 | Momento | Acción | Qué se ve |
 |---|---|---|
-| 0:00 | Panel abierto, auto-refresco activado | Par en **Sirviendo**, tres fuentes verdes, desviación ~0 bps, margen 200 |
-| 0:15 | Señalar la tabla de fuentes | Tres `operatorGroup` distintos: `wgroup`, `binance`, `kraken`. INV-5 en acción |
+| 0:00 | Panel abierto, auto-refresco activado | Par en **Sirviendo**, cinco fuentes verdes, desviación ~0 bps, margen 200 |
+| 0:15 | Señalar la tabla de fuentes | Cinco `operatorGroup` distintos, `cotejo-keeper-1..5`. INV-5 en acción — y las cinco claves son nuestras: la regla se cumple, la independencia todavía no existe |
 | 0:30 | Ejecutar `LiveTest` en una terminal al lado | El script imprime `[SERVING]` tras la línea base |
 | 0:45 | El script inyecta ×100 en una sola fuente | Consola: `[REFUSING] Cotejo__DeviationExceeded (INV-2)` |
 | 1:00 | Volver al panel, recargar | La tarjeta pasa a **Protegiendo**, ámbar |
@@ -338,7 +387,7 @@ broadcast requiere TTY para la contraseña del keystore, así que lo ejecutas t�
 **La fase 1B (reporters off-chain) no existe en este repositorio.** Se propuso la interfaz del
 adaptador y el esquema YAML y quedó pendiente de aprobación. Consecuencia práctica: hasta que
 haya reporters publicando, el panel mostrará **Protegiendo ·
-`Cotejo__InsufficientSources`** en los tres pares, que es el comportamiento correcto para un
+`Cotejo__InsufficientSources`** en el par, que es el comportamiento correcto para un
 oráculo sin datos.
 
 El demo en vivo no depende de ellos: `LiveTest.s.sol` firma sus propias atestaciones con

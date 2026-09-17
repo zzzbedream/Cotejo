@@ -255,8 +255,13 @@ const whitechainSepolia = defineChain({
 
 const client = createPublicClient({ chain: whitechainSepolia, transport: http(RPC) });
 
-const PAIRS = ['WBT/USD', 'ETH/USD', 'BTC/USD'];
-const GROUP_NAMES = ['wgroup', 'binance', 'kraken'];
+// Must match script/CotejoState.sol. One pair, five operator groups: the panel resolves
+// `operatorGroup` hashes back to names by pre-hashing this list, so a name that is not here
+// renders as a raw hash and the INV-5 column stops being readable.
+const PAIRS = ['WBT/USD'];
+const GROUP_NAMES = [
+  'cotejo-keeper-1', 'cotejo-keeper-2', 'cotejo-keeper-3', 'cotejo-keeper-4', 'cotejo-keeper-5',
+];
 const GROUP_BY_HASH = new Map(
   GROUP_NAMES.map((n, i) => [keccak256(toBytes(n)), { name: n, idx: i }])
 );

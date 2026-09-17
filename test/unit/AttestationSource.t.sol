@@ -317,6 +317,72 @@ contract AttestationSourceTest is Test {
     // Helpers
     // --------------------------------------------------------------------------------
 
+    // --------------------------------------------------------------------------------
+    // Gas budget
+    // --------------------------------------------------------------------------------
+
+    /// @notice A steady-state `submit` must be cheap enough that the whole deployment's
+    ///         heartbeat fits inside the faucet's daily payout.
+    ///
+    /// @dev The heartbeat was set to 900s from an unverified ~70k gas estimate. This is the
+    ///      measurement that estimate stood in for, kept as a test so that a change which
+    ///      makes `submit` more expensive fails here rather than silently draining the keeper
+    ///      at 03:00 and producing a stale-price refusal that looks like a broken deployment.
+    ///
+    ///      Steady state, not first write: the first attestation for an asset pays
+    ///      zero-to-nonzero SSTORE on every slot it touches, which happens once per source per
+    ///      asset and never again. The warm-up submit below absorbs that.
+    ///
+    ///      **This measures L2 execution gas only.** Whitechain Sepolia is an OP Stack chain
+    ///      and also charges an L1 data fee per transaction, which no local test can observe.
+    ///      The assertion therefore claims only half the faucet, leaving the rest for the L1
+    ///      component, the deployment itself and the configuration transactions. The real
+    ///      figure has to come off a broadcast receipt before anyone relies on it.
+    function test_steadyStateSubmitFitsTheFaucetBudget() public {
+        // Deployment shape, mirroring script/CotejoState.sol.
+        uint256 sourceCount = 5;
+        uint256 assetCount = 1;
+        uint256 heartbeatSeconds = 900;
+
+        // Whitechain Sepolia: 5 gwei minimum base fee, faucet pays 0.5 WBT per 24 hours.
+        uint256 minBaseFeeWei = 5 gwei;
+        uint256 faucetPerDayWei = 0.5 ether;
+
+        // Warm-up: pays the one-time cold-slot cost so the measurement below is steady state.
+        _submit(_attestation(100e18, 18, block.timestamp, MIN_DEPTH), reporterKey);
+
+        vm.warp(block.timestamp + heartbeatSeconds);
+        AttestationSource.PriceAttestation memory att =
+            _attestation(101e18, 18, block.timestamp, MIN_DEPTH);
+        bytes memory signature = _sign(att, reporterKey);
+
+        uint256 before = gasleft();
+        source.submit(att, signature);
+        uint256 executionGas = before - gasleft();
+
+        // A test call is not a transaction: add what the EVM charges before execution starts.
+        // 21,000 intrinsic, plus calldata at 16 gas per non-zero byte over the whole payload
+        // (selector, six ABI words, the offset and length words, and a 65-byte signature).
+        // Charging every byte as non-zero overstates it, which is the safe direction.
+        uint256 calldataBytes = 4 + (6 * 32) + (2 * 32) + 96;
+        uint256 txGas = executionGas + 21_000 + (calldataBytes * 16);
+
+        uint256 submitsPerDay = (1 days / heartbeatSeconds) * sourceCount * assetCount;
+        uint256 costPerDayWei = submitsPerDay * txGas * minBaseFeeWei;
+
+        emit log_named_uint("execution gas per submit ", executionGas);
+        emit log_named_uint("tx gas per submit        ", txGas);
+        emit log_named_uint("submits per day          ", submitsPerDay);
+        emit log_named_uint("L2 cost per day (wei)    ", costPerDayWei);
+        emit log_named_uint("faucet per day  (wei)    ", faucetPerDayWei);
+
+        assertLt(
+            costPerDayWei,
+            faucetPerDayWei / 2,
+            "heartbeat does not fit the faucet: lower the frequency or the source count"
+        );
+    }
+
     function _attestation(uint256 price, uint8 decimals, uint256 observedAt, uint256 depthUsd)
         private
         pure

@@ -3,7 +3,7 @@ Cotejo — test coverage
 
 Generated: 2026-09-17
 Command:   forge coverage --no-match-coverage "(test/|script/)" --report summary
-Suite:     226 tests, 22 suites, 0 failed
+Suite:     227 tests, 22 suites, 0 failed
 
 Scope
 -----

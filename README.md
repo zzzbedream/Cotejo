@@ -160,8 +160,12 @@ así no es un precio, y fallar cerrado es la respuesta correcta.
 
 ### D2 — `maxStalenessSeconds ≥ 2 × reporterHeartbeatSeconds`
 
-Validado al configurar la ruta. Con heartbeat de 300 s y staleness de 900 s hay tres latidos
-de holgura. Por debajo del doble, la operación normal dispara reverts aleatorios y nadie
+Validado al configurar la ruta. El despliegue usa heartbeat de 900 s y staleness de 1800 s: el
+mínimo exacto que D2 permite. Eso es precisamente lo que la regla del doble compra — la
+comprobación es `edad > maxStaleness`, estricta, así que la ventana **tolera un latido perdido
+entero y falla al segundo consecutivo**. El heartbeat lo fija el presupuesto del faucet (ver
+`DEPLOYMENT.md` §2), no la preferencia; la ventana de frescura es un parámetro de seguridad y no
+se ensancha para acomodar un keeper poco fiable. Por debajo del doble, la operación normal dispara reverts aleatorios y nadie
 entiende por qué. `reporterHeartbeatSeconds` vive en la `Route`, no en la fuente: leerlo de la
 fuente dejaría que una fuente mentirosa declarase un heartbeat diminuto para pasar el check.
 
@@ -224,23 +228,39 @@ que aún no haya activado Ecotone. Es una elección, no un límite.
 
 ## Cobertura
 
-150 tests, `forge coverage`:
+227 tests en 22 suites. `forge coverage --no-match-coverage "(test/|script/)"`, ambas capas:
 
 ```
-| File                                     | % Lines           | % Statements      | % Branches      | % Funcs         |
-|------------------------------------------|-------------------|-------------------|-----------------|-----------------|
-| src/PriceRouter.sol                      | 100.00% (111/111) | 100.00% (140/140) | 100.00% (29/29) | 100.00% (15/15) |
-| src/RouteGovernor.sol                    | 100.00% (56/56)   | 100.00% (55/55)   | 100.00% (10/10) | 100.00% (12/12) |
-| src/adapters/CotejoAggregatorAdapter.sol | 100.00% (25/25)   | 100.00% (23/23)   | 100.00% (3/3)   | 100.00% (6/6)   |
-| src/libraries/AggregationLib.sol         | 100.00% (35/35)   | 100.00% (50/50)   | 100.00% (8/8)   | 100.00% (4/4)   |
-| src/sources/AttestationSource.sol        | 100.00% (63/63)   | 100.00% (64/64)   | 100.00% (14/14) | 100.00% (15/15) |
-| src/sources/ChainlinkCompatSource.sol    | 100.00% (27/27)   | 100.00% (32/32)   | 100.00% (6/6)   | 100.00% (6/6)   |
-| src/sources/TwapSource.sol               | 88.89% (8/9)      | 80.00% (4/5)      | 100.00% (0/0)   | 100.00% (4/4)   |
-| Total                                    | 99.69% (325/326)  | 99.73% (368/369)  | 100.00% (70/70) | 100.00% (62/62) |
+| File                                     | % Lines          | % Statements       | % Branches       | % Funcs          |
+|------------------------------------------|------------------|--------------------|------------------|------------------|
+| src/PriceRouter.sol                      | 97.97% (145/148) | 97.75% (174/178)   | 89.74% (35/39)   | 100.00% (19/19)  |
+| src/RouteGovernor.sol                    | 94.94% (75/79)   | 93.59% (73/78)     | 71.43% (10/14)   | 94.12% (16/17)   |
+| src/adapters/CotejoAggregatorAdapter.sol | 100.00% (25/25)  | 100.00% (23/23)    | 100.00% (3/3)    | 100.00% (6/6)    |
+| src/libraries/AggregationLib.sol         | 100.00% (35/35)  | 100.00% (50/50)    | 100.00% (8/8)    | 100.00% (4/4)    |
+| src/market/AdaptiveCurveIrm.sol          | 92.50% (37/40)   | 86.27% (44/51)     | 63.64% (7/11)    | 83.33% (5/6)     |
+| src/market/CotejoMarket.sol              | 93.33% (420/450) | 90.77% (482/531)   | 59.34% (54/91)   | 89.47% (51/57)   |
+| src/market/CotejoOracleAdapter.sol       | 98.65% (73/74)   | 96.77% (90/93)     | 90.00% (9/10)    | 100.00% (16/16)  |
+| src/market/libraries/MathLib.sol         | 100.00% (19/19)  | 100.00% (23/23)    | 100.00% (0/0)    | 100.00% (8/8)    |
+| src/market/libraries/SharesMathLib.sol   | 100.00% (8/8)    | 100.00% (8/8)      | 100.00% (0/0)    | 100.00% (4/4)    |
+| src/sources/AttestationSource.sol        | 100.00% (73/73)  | 97.37% (74/76)     | 88.89% (16/18)   | 100.00% (17/17)  |
+| src/sources/ChainlinkCompatSource.sol    | 90.00% (27/30)   | 91.43% (32/35)     | 85.71% (6/7)     | 85.71% (6/7)     |
+| src/sources/TwapSource.sol               | 72.73% (8/11)    | 66.67% (4/6)       | 100.00% (0/0)    | 80.00% (4/5)     |
+| Total                                    | 95.26% (945/992) | 93.49% (1077/1152) | 73.63% (148/201) | 93.98% (156/166) |
 ```
 
-Por encima del mínimo del 95% en líneas y ramas. La única línea sin cubrir está en
-`TwapSource`, que es un esqueleto que siempre revierte por diseño.
+**El número honesto es el 73,63 % de ramas, y los dos peores ficheros son
+`CotejoMarket.sol` (59 %) y `AdaptiveCurveIrm.sol` (64 %).** Este README mostró durante un
+tiempo un 100 % de ramas: era la corrida de solo la capa de oráculo, tomada antes de que
+existiera el mercado. Era cierta sobre lo que medía y falsa sobre este repositorio.
+
+`CotejoMarket.sol` es el contrato que custodia fondos, así que es también donde el hueco
+importa más. El déficit se concentra en la validación de argumentos, los caminos denominados
+en *shares* de `supply`/`withdraw`/`borrow`/`repay`, y la superficie administrativa
+(`revokeIrm`, `pendingIrm`, `accrueInterest` externo), ninguno de los cuales tiene test hoy.
+
+Se cita la cobertura de ramas y no la de líneas (95,26 %) ni la de funciones (93,98 %) porque
+es la difícil de mover; citar cualquiera de las otras a solas sería selectivo. `coverage.txt`
+tiene la corrida completa.
 
 El test de invariante de Foundry corre 256 secuencias × 64 llamadas por run sobre seis
 acciones del handler (reportar, reportar con retraso, reportar con otra escala, caídas,

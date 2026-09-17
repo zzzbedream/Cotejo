@@ -133,10 +133,16 @@ contract Configure is CotejoState {
                     minSources: 3,
                     maxDeviationBps: 200,
                     // 1800/900 rather than 900/300. The heartbeat drives the keeper's gas
-                    // burn, and the faucet pays 0.5 WBT per 24 hours: five sources publishing
-                    // every 300s does not fit inside that, and a keeper that runs dry emits
-                    // exactly the stale-price refusal this oracle exists to emit. Measure a
-                    // real `submit` against the cap before lowering either figure.
+                    // burn and the faucet pays 0.5 WBT per 24 hours, so this is a budget, not
+                    // a preference. Measured, not estimated: a steady-state `submit` costs
+                    // 34,526 gas to execute and ~61,222 as a transaction, so five sources on
+                    // one pair every 900s burns ~0.147 WBT/day at the 5 gwei floor — under a
+                    // third of the faucet. The same shape at a 300s heartbeat over three pairs
+                    // is ~1.3 WBT/day, which does not fit. A keeper that runs dry emits
+                    // exactly the stale-price refusal this oracle exists to emit, which is
+                    // correct behaviour and indistinguishable from a broken deployment.
+                    // `test_steadyStateSubmitFitsTheFaucetBudget` holds that figure down.
+                    // The L1 data fee an OP Stack chain adds is NOT in that number.
                     // D2 still holds: staleness >= 2 x heartbeat.
                     maxStalenessSeconds: 1800,
                     reporterHeartbeatSeconds: 900,
