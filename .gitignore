@@ -1,0 +1,29 @@
+# Compiler files
+cache/
+out/
+
+# Commonly ignored directories
+.logs/
+.ignore/
+
+# Ignores development broadcast logs
+!/broadcast
+/broadcast/*/31337/
+/broadcast/**/dry-run/
+
+# Docs
+docs/
+
+# Dotenv file
+.env
+.env.*
+!.env.example
+
+# Agent Skills installed locally (whitechain-dev). Re-install with:
+#   npx skills add whitechain-labs/skills --skill whitechain-dev
+.agents/
+.claude/
+skills-lock.json
+
+# Foundry lockfile is environment-specific here
+foundry.lock

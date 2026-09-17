@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cotejo · Panel de verificación</title>
+<style>
+  :root{
+    --bg:#0b0e13;
+    --panel:#121722;
+    --panel-2:#171d2b;
+    --line:#232c3d;
+    --line-soft:#1b2231;
+    --ink:#e6ebf5;
+    --ink-dim:#8e9bb3;
+    --ink-faint:#5d6b83;
+    --serving:#3ddc97;
+    --serving-bg:rgba(61,220,151,.09);
+    --guard:#f0a92b;
+    --guard-bg:rgba(240,169,43,.10);
+    --halt:#7aa2ff;
+    --halt-bg:rgba(122,162,255,.10);
+    --idle:#5d6b83;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,"Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
+    --sans:ui-sans-serif,-apple-system,"Segoe UI",Inter,system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;background:var(--bg);color:var(--ink);
+    font-family:var(--sans);font-size:14px;line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding-block:28px;padding-left:20px;padding-right:20px}
+
+  /* ---- header ---- */
+  header{
+    display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;justify-content:space-between;
+    border-bottom:1px solid var(--line);padding-bottom:20px;margin-bottom:8px;
+  }
+  .brand h1{
+    margin:0;font-size:26px;letter-spacing:-.02em;font-weight:650;
+  }
+  .brand p{margin:5px 0 0;color:var(--ink-dim);font-size:13px;max-width:56ch}
+  .chainbar{
+    display:flex;gap:18px;flex-wrap:wrap;font-family:var(--mono);font-size:11.5px;
+    color:var(--ink-faint);text-align:right;
+  }
+  .chainbar b{display:block;color:var(--ink-dim);font-weight:500;font-size:10px;
+    text-transform:uppercase;letter-spacing:.09em;margin-bottom:2px}
+  .chainbar span{color:var(--ink)}
+
+  /* ---- controls ---- */
+  .controls{
+    display:flex;gap:10px;flex-wrap:wrap;align-items:center;
+    margin:18px 0 22px;padding:12px 14px;background:var(--panel);
+    border:1px solid var(--line-soft);border-radius:10px;
+  }
+  .controls label{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--ink-faint)}
+  .controls input{
+    font-family:var(--mono);font-size:12px;background:var(--bg);color:var(--ink);
+    border:1px solid var(--line);border-radius:6px;padding:7px 9px;min-width:380px;flex:1;
+  }
+  .controls input:focus{outline:none;border-color:var(--halt)}
+  button{
+    font-family:var(--sans);font-size:12.5px;font-weight:550;cursor:pointer;
+    background:var(--panel-2);color:var(--ink);border:1px solid var(--line);
+    border-radius:6px;padding:7px 14px;transition:background .15s,border-color .15s;
+  }
+  button:hover{background:#1e2536;border-color:#2e3a52}
+  button:active{transform:translateY(1px)}
+  button[data-on="true"]{border-color:var(--serving);color:var(--serving)}
+
+  /* ---- philosophy strip ---- */
+  .creed{
+    display:flex;gap:11px;align-items:flex-start;
+    margin:0 0 24px;padding:13px 15px;border-radius:10px;
+    background:var(--halt-bg);border:1px solid rgba(122,162,255,.22);
+  }
+  .creed svg{flex:none;margin-top:1px}
+  .creed p{margin:0;font-size:12.5px;color:#c3d2f0}
+  .creed strong{color:#e6ecfb;font-weight:600}
+
+  /* ---- pair cards ---- */
+  .grid{display:grid;gap:16px}
+  .pair{
+    background:var(--panel);border:1px solid var(--line-soft);border-radius:12px;
+    overflow:hidden;
+  }
+  .pair-head{
+    display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between;
+    padding:16px 18px;border-bottom:1px solid var(--line-soft);
+  }
+  .pair-id{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+  .pair-id h2{margin:0;font-size:18px;font-weight:620;letter-spacing:-.01em}
+  .pair-id .aid{font-family:var(--mono);font-size:10.5px;color:var(--ink-faint)}
+
+  .state{
+    display:inline-flex;align-items:center;gap:7px;
+    font-size:11px;font-weight:650;letter-spacing:.08em;text-transform:uppercase;
+    padding:5px 11px;border-radius:999px;border:1px solid transparent;
+  }
+  .state .dot{width:7px;height:7px;border-radius:50%;flex:none}
+  .state.serving{color:var(--serving);background:var(--serving-bg);border-color:rgba(61,220,151,.28)}
+  .state.serving .dot{background:var(--serving);box-shadow:0 0 0 3px rgba(61,220,151,.16)}
+  .state.guard{color:var(--guard);background:var(--guard-bg);border-color:rgba(240,169,43,.3)}
+  .state.guard .dot{background:var(--guard);box-shadow:0 0 0 3px rgba(240,169,43,.16)}
+  .state.halt{color:var(--halt);background:var(--halt-bg);border-color:rgba(122,162,255,.3)}
+  .state.halt .dot{background:var(--halt)}
+  .state.idle{color:var(--idle);background:rgba(93,107,131,.1);border-color:var(--line)}
+  .state.idle .dot{background:var(--idle)}
+
+  /* ---- price ---- */
+  .readout{padding:18px;display:grid;gap:18px;grid-template-columns:minmax(230px,300px) 1fr;align-items:start}
+  @media(max-width:820px){.readout{grid-template-columns:1fr}}
+  .price-val{font-family:var(--mono);font-size:34px;font-weight:600;letter-spacing:-.02em;line-height:1.1}
+  .price-val small{font-size:15px;color:var(--ink-dim);font-weight:400;margin-left:5px}
+  .price-meta{margin-top:7px;font-family:var(--mono);font-size:11px;color:var(--ink-faint)}
+  .price-meta a{color:var(--ink-dim)}
+
+  /* ---- refusal ---- */
+  .refusal{border-left:3px solid var(--guard);padding:2px 0 2px 14px}
+  .refusal .err{font-family:var(--mono);font-size:16px;font-weight:600;color:var(--guard);
+    word-break:break-word;line-height:1.3}
+  .refusal .inv{
+    display:inline-block;margin:8px 0 6px;font-size:10px;font-weight:700;letter-spacing:.1em;
+    color:#0b0e13;background:var(--guard);padding:2px 7px;border-radius:4px;
+  }
+  .refusal .why{font-size:13px;color:#e4cb9d;margin:0}
+  .refusal .args{margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--ink-faint)}
+
+  /* ---- deviation meter ---- */
+  .meter-block h3,.sources h3,.pending h3{
+    margin:0 0 9px;font-size:10px;font-weight:600;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--ink-faint);
+  }
+  .meter{height:9px;border-radius:999px;background:var(--panel-2);
+    border:1px solid var(--line);overflow:hidden;position:relative}
+  .meter i{display:block;height:100%;border-radius:999px;transition:width .4s ease}
+  .meter-legend{display:flex;justify-content:space-between;margin-top:6px;
+    font-family:var(--mono);font-size:11px;color:var(--ink-dim)}
+  .meter-legend b{color:var(--ink);font-weight:600}
+
+  /* ---- sources table ---- */
+  .sources{padding:0 18px 18px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  thead th{
+    text-align:left;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--ink-faint);padding:7px 10px;border-bottom:1px solid var(--line);white-space:nowrap;
+  }
+  tbody td{padding:9px 10px;border-bottom:1px solid var(--line-soft);vertical-align:middle}
+  tbody tr:last-child td{border-bottom:none}
+  td.num{font-family:var(--mono);text-align:right;white-space:nowrap}
+  .grp{display:inline-block;font-family:var(--mono);font-size:10.5px;font-weight:600;
+    padding:2px 7px;border-radius:4px;background:var(--panel-2);border:1px solid var(--line)}
+  .grp.g0{color:#7aa2ff;border-color:rgba(122,162,255,.3)}
+  .grp.g1{color:#f0a92b;border-color:rgba(240,169,43,.3)}
+  .grp.g2{color:#3ddc97;border-color:rgba(61,220,151,.3)}
+  .age-ok{color:var(--serving)} .age-warn{color:var(--guard)} .age-bad{color:#ff6b6b}
+  .src-down{color:var(--ink-faint);font-style:italic}
+  a.addr{font-family:var(--mono);font-size:11px;color:var(--ink-dim);text-decoration:none;
+    border-bottom:1px dotted var(--line)}
+  a.addr:hover{color:var(--halt);border-bottom-color:var(--halt)}
+
+  /* ---- pending route ---- */
+  .pending{margin:0 18px 18px;padding:13px 15px;border-radius:9px;
+    background:var(--guard-bg);border:1px solid rgba(240,169,43,.24)}
+  .pending .cd{font-family:var(--mono);font-size:22px;font-weight:600;color:var(--guard)}
+  .pending .diff{margin-top:9px;font-family:var(--mono);font-size:11.5px;color:#e4cb9d}
+  .pending .diff div{padding:1px 0}
+
+  footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--line);
+    color:var(--ink-faint);font-size:11.5px}
+  footer a{color:var(--ink-dim)}
+  .fatal{padding:16px 18px;border-radius:10px;background:rgba(255,107,107,.08);
+    border:1px solid rgba(255,107,107,.3);color:#ffb4b4;font-size:13px}
+  .skel{color:var(--ink-faint);font-family:var(--mono);font-size:12px;padding:24px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <h1>Cotejo · Panel de verificación</h1>
+      <p>Lectura directa de Whitechain Sepolia. Nada pasa por un servidor nuestro:
+         esta página habla con el RPC público y con los contratos.</p>
+    </div>
+    <div class="chainbar">
+      <div><b>Red</b><span id="net">Whitechain Sepolia</span></div>
+      <div><b>Chain ID</b><span id="cid">1874</span></div>
+      <div><b>Bloque</b><span id="blk">—</span></div>
+      <div><b>Leído</b><span id="ts">—</span></div>
+    </div>
+  </header>
+
+  <div class="controls">
+    <label for="router">Router</label>
+    <input id="router" spellcheck="false" placeholder="0x…">
+    <label for="governor">Governor</label>
+    <input id="governor" spellcheck="false" placeholder="0x…">
+    <button id="reload">Releer</button>
+    <button id="auto" data-on="false">Auto 12&nbsp;s</button>
+  </div>
+
+  <div class="creed">
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="8" cy="8" r="7" stroke="#7aa2ff" stroke-width="1.4"/>
+      <path d="M8 4.6v4.2M8 11.2v.6" stroke="#7aa2ff" stroke-width="1.6" stroke-linecap="round"/>
+    </svg>
+    <p><strong>Un oráculo que se niega a responder está funcionando.</strong>
+       Cuando el router revierte, no es una caída: es una invariante deteniendo un precio que
+       no se puede defender. Abajo verás el error tipado y qué regla lo produjo.</p>
+  </div>
+
+  <main id="out" class="grid">
+    <div class="skel">Conectando con rpc.testnet.whitechain.io…</div>
+  </main>
+
+  <footer>
+    Contratos y direcciones enlazan a
+    <a id="explorerLink" href="https://explorer.testnet.whitechain.io" target="_blank" rel="noopener">Blockscout</a>.
+    Las lecturas de cada ciclo se agrupan en un solo <code>eth_call</code> vía Multicall3
+    (<a class="addr" id="mcLink" target="_blank" rel="noopener">0xcA11…CA11</a>), de modo que
+    todos los valores de una tarjeta pertenecen al mismo bloque.
+  </footer>
+</div>
+
+<script type="module">
+import {
+  createPublicClient, http, defineChain, keccak256, toBytes,
+  decodeErrorResult, formatUnits, getAddress
+} from 'https://cdn.jsdelivr.net/npm/viem@2.21.55/+esm';
+
+/* ------------------------------------------------------------------ *
+ * Network. Defined explicitly rather than imported: viem also exports
+ * `whitechainTestnet`, which is chain 2625 — a different network. The
+ * docs warn about the collision, so the chain id is pinned here and
+ * checked against the RPC before anything is rendered.
+ * ------------------------------------------------------------------ */
+const CHAIN_ID = 1874;
+const RPC = 'https://rpc.testnet.whitechain.io';
+const EXPLORER = 'https://explorer.testnet.whitechain.io';
+const MULTICALL3 = '0xcA11bde05977b3631167028862bE2a173976CA11';
+
+const whitechainSepolia = defineChain({
+  id: CHAIN_ID,
+  name: 'Whitechain Sepolia',
+  nativeCurrency: { name: 'WBT', symbol: 'WBT', decimals: 18 },
+  rpcUrls: { default: { http: [RPC] } },
+  blockExplorers: { default: { name: 'Blockscout', url: EXPLORER } },
+  // Without this, viem silently falls back to one request per read and the
+  // public RPC's 50 rps budget disappears fast.
+  contracts: { multicall3: { address: MULTICALL3, blockCreated: 0 } },
+});
+
+const client = createPublicClient({ chain: whitechainSepolia, transport: http(RPC) });
+
+const PAIRS = ['WBT/USD', 'ETH/USD', 'BTC/USD'];
+const GROUP_NAMES = ['wgroup', 'binance', 'kraken'];
+const GROUP_BY_HASH = new Map(
+  GROUP_NAMES.map((n, i) => [keccak256(toBytes(n)), { name: n, idx: i }])
+);
+
+/* ---------------------------- ABIs ---------------------------- */
+const ROUTE_TUPLE = {
+  type: 'tuple',
+  components: [
+    { name: 'sources', type: 'address[]' },
+    { name: 'minSources', type: 'uint8' },
+    { name: 'maxDeviationBps', type: 'uint16' },
+    { name: 'maxStalenessSeconds', type: 'uint32' },
+    { name: 'reporterHeartbeatSeconds', type: 'uint32' },
+    { name: 'maxSourcesPerOperatorGroup', type: 'uint8' },
+  ],
+};
+
+const ROUTER_ABI = [
+  { type:'function', name:'latestPrice', stateMutability:'view',
+    inputs:[{name:'asset',type:'bytes32'}],
+    outputs:[{name:'price',type:'uint256'},{name:'decimals',type:'uint8'},{name:'observedAt',type:'uint256'}] },
+  { type:'function', name:'getRoute', stateMutability:'view',
+    inputs:[{name:'asset',type:'bytes32'}], outputs:[{ ...ROUTE_TUPLE, name:'route' }] },
+  { type:'function', name:'isPaused', stateMutability:'view',
+    inputs:[{name:'asset',type:'bytes32'}], outputs:[{name:'paused',type:'bool'}] },
+  { type:'function', name:'governor', stateMutability:'view', inputs:[], outputs:[{type:'address'}] },
+];
+
+const GOVERNOR_ABI = [
+  { type:'function', name:'getPendingRoute', stateMutability:'view',
+    inputs:[{name:'asset',type:'bytes32'}],
+    outputs:[{ ...ROUTE_TUPLE, name:'route' },{name:'eta',type:'uint64'},{name:'exists',type:'bool'}] },
+  { type:'function', name:'ROUTE_TIMELOCK', stateMutability:'view', inputs:[], outputs:[{type:'uint256'}] },
+];
+
+const SOURCE_ABI = [
+  { type:'function', name:'latestObservation', stateMutability:'view',
+    inputs:[{name:'asset',type:'bytes32'}],
+    outputs:[{name:'price',type:'uint256'},{name:'decimals',type:'uint8'},
+             {name:'observedAt',type:'uint256'},{name:'depthUsd',type:'uint256'},
+             {name:'reporter',type:'address'},{name:'group',type:'bytes32'}] },
+];
+
+/* Every Cotejo error, so a refusal can be named rather than shown as a blob. */
+const ERRORS_ABI = [
+  { type:'error', name:'Cotejo__InsufficientSources', inputs:[
+    {name:'asset',type:'bytes32'},{name:'fresh',type:'uint256'},{name:'required',type:'uint256'}] },
+  { type:'error', name:'Cotejo__DeviationExceeded', inputs:[
+    {name:'asset',type:'bytes32'},{name:'deviationBps',type:'uint256'},{name:'maxBps',type:'uint256'}] },
+  { type:'error', name:'Cotejo__StalePrice', inputs:[
+    {name:'asset',type:'bytes32'},{name:'source',type:'address'},
+    {name:'observedAt',type:'uint256'},{name:'maxStalenessSeconds',type:'uint256'}] },
+  { type:'error', name:'Cotejo__OperatorConcentration', inputs:[
+    {name:'asset',type:'bytes32'},{name:'group',type:'bytes32'},
+    {name:'count',type:'uint256'},{name:'maxAllowed',type:'uint256'}] },
+  { type:'error', name:'Cotejo__Paused', inputs:[{name:'asset',type:'bytes32'}] },
+  { type:'error', name:'Cotejo__RouteNotConfigured', inputs:[{name:'asset',type:'bytes32'}] },
+  { type:'error', name:'Cotejo__AssetNotSupported', inputs:[{name:'asset',type:'bytes32'}] },
+  { type:'error', name:'Cotejo__NoPrice', inputs:[{name:'asset',type:'bytes32'}] },
+  { type:'error', name:'Cotejo__ZeroPrice', inputs:[{name:'asset',type:'bytes32'}] },
+  { type:'error', name:'Cotejo__PrecisionLoss', inputs:[
+    {name:'price',type:'uint256'},{name:'fromDecimals',type:'uint8'},{name:'toDecimals',type:'uint8'}] },
+];
+
+/* Which invariant each refusal enforces, in one sentence. */
+const INVARIANT = {
+  Cotejo__InsufficientSources: ['INV-1',
+    'Quedan menos fuentes frescas que el mínimo de la ruta, así que no hay quórum para formar un precio.'],
+  Cotejo__DeviationExceeded: ['INV-2',
+    'Las fuentes discrepan más de lo tolerado: alguna está manipulada o rota, y el router no elige cuál creer.'],
+  Cotejo__StalePrice: ['INV-3',
+    'Una fuente del conjunto respondió con una observación más vieja que la ventana de la ruta.'],
+  Cotejo__OperatorConcentration: ['INV-5',
+    'Demasiadas fuentes comparten operador: el quórum parecería independiente sin serlo.'],
+  Cotejo__Paused: ['INV-6',
+    'Un guardián pausó el activo. Reanudar exige pasar el timelock completo de 48 h.'],
+  Cotejo__RouteNotConfigured: ['—',
+    'No hay ruta instalada para este par todavía.'],
+  Cotejo__NoPrice: ['—', 'La fuente aún no ha recibido ninguna atestación para este activo.'],
+  Cotejo__AssetNotSupported: ['—', 'Esta fuente no sirve este activo.'],
+  Cotejo__PrecisionLoss: ['—',
+    'Reescalar el precio lo redondearía a cero, y Cotejo nunca devuelve cero.'],
+};
+
+/* ---------------------------- helpers ---------------------------- */
+const $ = (id) => document.getElementById(id);
+const ZERO = '0x0000000000000000000000000000000000000000';
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
+  ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+const short = (a) => `${a.slice(0,6)}…${a.slice(-4)}`;
+const addrLink = (a) =>
+  `<a class="addr" href="${EXPLORER}/address/${a}" target="_blank" rel="noopener">${short(a)}</a>`;
+
+const assetIds = Object.fromEntries(PAIRS.map((p) => [p, keccak256(toBytes(p))]));
+
+function decodeRefusal(err) {
+  // viem nests the revert payload; dig for the first 0x… blob.
+  let data = err?.data ?? err?.cause?.data ?? err?.cause?.cause?.data;
+  if (typeof data === 'object' && data?.data) data = data.data;
+  if (typeof data !== 'string' || !data.startsWith('0x') || data.length < 10) {
+    return { name: null, raw: err?.shortMessage || err?.message || 'Error desconocido', args: [] };
+  }
+  try {
+    const d = decodeErrorResult({ abi: ERRORS_ABI, data });
+    return { name: d.errorName, args: d.args ?? [], raw: null };
+  } catch {
+    return { name: null, raw: `Revert no reconocido (${data.slice(0,10)})`, args: [] };
+  }
+}
+
+function median(xs) {
+  const s = [...xs].sort((a,b) => (a < b ? -1 : a > b ? 1 : 0));
+  const n = s.length; if (!n) return 0n;
+  const m = n >> 1;
+  return n % 2 ? s[m] : s[m-1] + (s[m] - s[m-1]) / 2n;
+}
+
+/* Mirrors AggregationLib.deviationBps: (max - min) * 10_000 / median. */
+function deviationBps(xs) {
+  if (xs.length < 2) return 0n;
+  const s = [...xs].sort((a,b) => (a < b ? -1 : a > b ? 1 : 0));
+  const med = median(s);
+  if (med === 0n) return 0n;
+  return ((s[s.length-1] - s[0]) * 10000n) / med;
+}
+
+const norm18 = (v, d) => d === 18 ? v : (d < 18 ? v * 10n ** BigInt(18-d) : v / 10n ** BigInt(d-18));
+
+/* ---------------------------- render ---------------------------- */
+function stateBadge(kind, label) {
+  return `<span class="state ${kind}"><span class="dot"></span>${esc(label)}</span>`;
+}
+
+function renderRefusal(refusal) {
+  const [inv, why] = INVARIANT[refusal.name] ?? ['—', 'El router se negó a producir un precio.'];
+  const argLine = refusal.args.length
+    ? `<div class="args">${refusal.args.map((a) =>
+        typeof a === 'bigint' ? a.toString() : esc(String(a))).join(' · ')}</div>` : '';
+  return `<div class="refusal">
+    <div class="err">${esc(refusal.name ?? refusal.raw)}</div>
+    <span class="inv">${esc(inv)}</span>
+    <p class="why">${esc(why)}</p>${argLine}</div>`;
+}
+
+function renderMeter(devBps, maxBps) {
+  if (maxBps === 0n) return '';
+  const pct = Number(devBps * 100n / maxBps);
+  const clamped = Math.min(100, Math.max(0, pct));
+  const color = clamped < 60 ? 'var(--serving)' : clamped < 90 ? 'var(--guard)' : '#ff6b6b';
+  const marginBps = devBps >= maxBps ? 0n : maxBps - devBps;
+  return `<div class="meter-block">
+    <h3>Desviación entre fuentes · INV-2</h3>
+    <div class="meter"><i style="width:${clamped}%;background:${color}"></i></div>
+    <div class="meter-legend">
+      <span><b>${devBps.toString()}</b> bps actuales</span>
+      <span>margen <b>${marginBps.toString()}</b> bps · límite ${maxBps.toString()}</span>
+    </div></div>`;
+}
+
+function renderSources(rows, route, now) {
+  if (!rows.length) return '';
+  const body = rows.map((r) => {
+    if (!r.ok) {
+      return `<tr>
+        <td>${addrLink(r.address)}</td>
+        <td><span class="grp">—</span></td>
+        <td colspan="4" class="src-down">sin dato · ${esc(r.refusal?.name ?? 'no responde')}</td>
+      </tr>`;
+    }
+    const g = GROUP_BY_HASH.get(r.group);
+    const age = now - Number(r.observedAt);
+    const maxAge = Number(route.maxStalenessSeconds);
+    const cls = age > maxAge ? 'age-bad' : age > maxAge * 0.66 ? 'age-warn' : 'age-ok';
+    return `<tr>
+      <td>${addrLink(r.address)}</td>
+      <td><span class="grp g${g ? g.idx : ''}">${esc(g ? g.name : r.group.slice(0,10))}</span></td>
+      <td class="num">${esc(formatUnits(r.price, r.decimals))}</td>
+      <td class="num ${cls}">${age}s</td>
+      <td class="num">$${Number(r.depthUsd).toLocaleString('es-ES')}</td>
+      <td class="num">${addrLink(r.reporter)}</td>
+    </tr>`;
+  }).join('');
+
+  return `<div class="sources">
+    <h3>Fuentes contribuyentes · ${rows.filter(r=>r.ok).length}/${rows.length} respondiendo
+        · mínimo ${route.minSources} · máx ${route.maxSourcesPerOperatorGroup} por operador</h3>
+    <table><thead><tr>
+      <th>Fuente</th><th>Operador</th><th style="text-align:right">Precio</th>
+      <th style="text-align:right">Antigüedad</th><th style="text-align:right">Profundidad</th>
+      <th style="text-align:right">Firmante</th>
+    </tr></thead><tbody>${body}</tbody></table></div>`;
+}
+
+function renderPending(p, now, live) {
+  if (!p?.exists) return '';
+  const left = Number(p.eta) - now;
+  const cd = left <= 0 ? 'Listo para ejecutar'
+    : `${Math.floor(left/3600)}h ${Math.floor((left%3600)/60)}m ${left%60}s`;
+  const rows = [];
+  const cmp = (label, a, b) =>
+    rows.push(`<div>${label}: ${a}${String(a) !== String(b) ? ` → <b>${b}</b>` : ''}</div>`);
+  if (live) {
+    cmp('fuentes', live.sources.length, p.route.sources.length);
+    cmp('minSources', live.minSources, p.route.minSources);
+    cmp('maxDeviationBps', live.maxDeviationBps, p.route.maxDeviationBps);
+    cmp('maxStalenessSeconds', live.maxStalenessSeconds, p.route.maxStalenessSeconds);
+    cmp('maxSourcesPerOperatorGroup', live.maxSourcesPerOperatorGroup, p.route.maxSourcesPerOperatorGroup);
+  }
+  return `<div class="pending">
+    <h3>Cambio de ruta pendiente · INV-4 · timelock 48 h</h3>
+    <div class="cd">${esc(cd)}</div>
+    <div class="diff">${rows.join('')}</div>
+    <div class="diff" style="margin-top:8px;color:var(--ink-faint)">
+      La propuesta es legible por cualquiera durante toda la espera. Eso es la invariante,
+      no una cortesía.</div>
+  </div>`;
+}
+
+function renderPair(name, d, now) {
+  const aid = assetIds[name];
+  let badge, main;
+
+  if (d.paused) {
+    badge = stateBadge('halt', 'Pausado');
+  } else if (d.price.ok) {
+    badge = stateBadge('serving', 'Sirviendo');
+  } else if (d.price.refusal?.name === 'Cotejo__RouteNotConfigured') {
+    badge = stateBadge('idle', 'Sin ruta');
+  } else {
+    badge = stateBadge('guard', 'Protegiendo');
+  }
+
+  if (d.price.ok) {
+    const age = now - Number(d.price.observedAt);
+    main = `<div>
+      <div class="price-val">${esc(formatUnits(d.price.price, d.price.decimals))}<small>USD</small></div>
+      <div class="price-meta">
+        bloque ${d.block} · observación más antigua hace ${age}s<br>
+        ${d.route ? `ruta ${d.route.sources.length} fuentes · staleness ${d.route.maxStalenessSeconds}s` : ''}
+      </div></div>`;
+  } else {
+    main = renderRefusal(d.price.refusal);
+  }
+
+  const meter = d.route && d.freshPrices.length > 1
+    ? renderMeter(deviationBps(d.freshPrices), BigInt(d.route.maxDeviationBps)) : '';
+
+  return `<section class="pair">
+    <div class="pair-head">
+      <div class="pair-id">
+        <h2>${esc(name)}</h2>
+        <span class="aid">${esc(aid.slice(0,18))}…</span>
+        ${d.adapter ? addrLink(d.adapter) : ''}
+      </div>
+      ${badge}
+    </div>
+    <div class="readout">${main}${meter}</div>
+    ${d.route ? renderSources(d.sources, d.route, now) : ''}
+    ${renderPending(d.pending, now, d.route)}
+  </section>`;
+}
+
+/* ---------------------------- load ---------------------------- */
+let timer = null;
+
+async function load() {
+  const out = $('out');
+  const router = ($('router').value || '').trim();
+  const governor = ($('governor').value || '').trim();
+
+  if (!router || router === ZERO) {
+    out.innerHTML = `<div class="fatal">
+      Introduce la dirección del <b>PriceRouter</b> arriba. Está en
+      <code>deployments/1874.json</code> tras ejecutar la fase 1.</div>`;
+    return;
+  }
+
+  let routerAddr, governorAddr = null;
+  try { routerAddr = getAddress(router); }
+  catch { out.innerHTML = `<div class="fatal">La dirección del router no es válida.</div>`; return; }
+  if (governor && governor !== ZERO) { try { governorAddr = getAddress(governor); } catch {} }
+
+  localStorage.setItem('cotejo.router', routerAddr);
+  if (governorAddr) localStorage.setItem('cotejo.governor', governorAddr);
+
+  try {
+    const id = await client.getChainId();
+    if (id !== CHAIN_ID) {
+      out.innerHTML = `<div class="fatal">El RPC responde chain id ${id}, no ${CHAIN_ID}.
+        Whitechain Sepolia es 1874; 2625 es otra red distinta.</div>`;
+      return;
+    }
+    $('cid').textContent = id;
+
+    const blockNumber = await client.getBlockNumber();
+    $('blk').textContent = blockNumber.toString();
+    $('ts').textContent = new Date().toLocaleTimeString('es-ES');
+
+    // Round 1 — everything that does not depend on the route contents.
+    const calls = [];
+    for (const p of PAIRS) {
+      const asset = assetIds[p];
+      calls.push({ address: routerAddr, abi: ROUTER_ABI, functionName: 'latestPrice', args: [asset] });
+      calls.push({ address: routerAddr, abi: ROUTER_ABI, functionName: 'isPaused', args: [asset] });
+      calls.push({ address: routerAddr, abi: ROUTER_ABI, functionName: 'getRoute', args: [asset] });
+      if (governorAddr) {
+        calls.push({ address: governorAddr, abi: GOVERNOR_ABI, functionName: 'getPendingRoute', args: [asset] });
+      }
+    }
+    const per = governorAddr ? 4 : 3;
+    const r1 = await client.multicall({ contracts: calls, allowFailure: true, blockNumber });
+
+    const data = {};
+    PAIRS.forEach((p, i) => {
+      const base = i * per;
+      const priceRes = r1[base];
+      const pausedRes = r1[base + 1];
+      const routeRes = r1[base + 2];
+      const pendRes = governorAddr ? r1[base + 3] : null;
+
+      const route = routeRes.status === 'success' && routeRes.result.sources.length
+        ? routeRes.result : null;
+
+      let pending = null;
+      if (pendRes?.status === 'success') {
+        const [route_, eta, exists] = pendRes.result;
+        pending = { route: route_, eta, exists };
+      }
+
+      data[p] = {
+        block: blockNumber.toString(),
+        paused: pausedRes.status === 'success' ? pausedRes.result : false,
+        route,
+        pending,
+        adapter: null,
+        sources: [],
+        freshPrices: [],
+        price: priceRes.status === 'success'
+          ? { ok: true, price: priceRes.result[0], decimals: priceRes.result[1], observedAt: priceRes.result[2] }
+          : { ok: false, refusal: decodeRefusal(priceRes.error) },
+      };
+    });
+
+    // Round 2 — per-source observations, now that the routes are known.
+    const srcCalls = [];
+    const index = [];
+    for (const p of PAIRS) {
+      const route = data[p].route;
+      if (!route) continue;
+      for (const s of route.sources) {
+        srcCalls.push({ address: s, abi: SOURCE_ABI, functionName: 'latestObservation', args: [assetIds[p]] });
+        index.push([p, s]);
+      }
+    }
+    if (srcCalls.length) {
+      const r2 = await client.multicall({ contracts: srcCalls, allowFailure: true, blockNumber });
+      r2.forEach((res, k) => {
+        const [p, address] = index[k];
+        if (res.status === 'success') {
+          const [price, decimals, observedAt, depthUsd, reporter, group] = res.result;
+          data[p].sources.push({ ok: true, address, price, decimals, observedAt, depthUsd, reporter, group });
+          data[p].freshPrices.push(norm18(price, Number(decimals)));
+        } else {
+          data[p].sources.push({ ok: false, address, refusal: decodeRefusal(res.error) });
+        }
+      });
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    out.innerHTML = PAIRS.map((p) => renderPair(p, data[p], now)).join('');
+  } catch (e) {
+    out.innerHTML = `<div class="fatal">No se pudo leer la cadena: ${esc(e.shortMessage || e.message)}
+      <br><br>El RPC público limita a 50 req/s por IP. Si acabas de recargar varias veces,
+      espera un segundo y vuelve a intentarlo.</div>`;
+  }
+}
+
+/* ---------------------------- wiring ---------------------------- */
+const params = new URLSearchParams(location.search);
+$('router').value = params.get('router') || localStorage.getItem('cotejo.router') || '';
+$('governor').value = params.get('governor') || localStorage.getItem('cotejo.governor') || '';
+$('mcLink').href = `${EXPLORER}/address/${MULTICALL3}`;
+
+$('reload').addEventListener('click', load);
+$('auto').addEventListener('click', (e) => {
+  const on = e.target.dataset.on === 'true';
+  e.target.dataset.on = String(!on);
+  e.target.textContent = on ? 'Auto 12 s' : 'Auto ON';
+  if (timer) { clearInterval(timer); timer = null; }
+  if (!on) timer = setInterval(load, 12000);
+});
+for (const id of ['router','governor']) {
+  $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') load(); });
+}
+
+load();
+</script>
+</body>
+</html>

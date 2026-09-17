@@ -1,0 +1,36 @@
+{
+  "chainId": 1874,
+  "network": "Whitechain Sepolia",
+  "rpcUrl": "https://rpc.testnet.whitechain.io",
+  "explorer": "https://explorer.testnet.whitechain.io",
+  "contracts": {
+    "PriceRouter": "0x0000000000000000000000000000000000000000",
+    "RouteGovernor": "0x0000000000000000000000000000000000000000",
+    "AttestationSource_wgroup": "0x0000000000000000000000000000000000000000",
+    "AttestationSource_binance": "0x0000000000000000000000000000000000000000",
+    "AttestationSource_kraken": "0x0000000000000000000000000000000000000000",
+    "Adapter_WBT_USD": "0x0000000000000000000000000000000000000000",
+    "Adapter_ETH_USD": "0x0000000000000000000000000000000000000000",
+    "Adapter_BTC_USD": "0x0000000000000000000000000000000000000000"
+  },
+  "config": {
+    "owner": "0x0000000000000000000000000000000000000000",
+    "guardian": "0x0000000000000000000000000000000000000000",
+    "governorBound": false,
+    "assetsEnabled": false,
+    "routesProposed": false,
+    "routesExecuted": false
+  },
+  "routeParams": {
+    "minSources": 3,
+    "maxDeviationBps": 200,
+    "maxStalenessSeconds": 900,
+    "reporterHeartbeatSeconds": 300,
+    "maxSourcesPerOperatorGroup": 1
+  },
+  "assets": {
+    "WBT/USD": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "ETH/USD": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "BTC/USD": "0x0000000000000000000000000000000000000000000000000000000000000000"
+  }
+}
