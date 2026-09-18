@@ -52,6 +52,7 @@ contract Configure is CotejoState {
         uint256 minDepthUsd = vm.envOr("COTEJO_MIN_DEPTH_USD", MIN_DEPTH_USD_DEFAULT);
 
         console2.log("=== Cotejo phase 2: configure ===");
+        _warnIfSeedLooksUnread();
         console2.log("  router              :", router);
         console2.log("  governor            :", governor);
         console2.log("  min depth (USD)     :", minDepthUsd);
@@ -174,6 +175,20 @@ contract Configure is CotejoState {
             out[i] = readLive(contractKeyForGroup(OPERATOR_GROUPS[i]));
             require(out[i] != address(0), "Cotejo: an AttestationSource is missing. Re-run 01_Deploy.");
         }
+    }
+
+    /// @dev Foundry's `.env` parser drops a value containing spaces unless it is quoted, and
+    ///      says nothing. A mnemonic is the only value here with spaces in it, so the symptom
+    ///      is a seed that reads as empty while `COTEJO_GUARDIAN` on the next line — an address,
+    ///      no spaces — loads fine. The run then succeeds, warns that no reporter is
+    ///      configured, and looks exactly like having forgotten to set one.
+    ///
+    ///      This cannot tell "unset" from "unquoted", so it names both.
+    function _warnIfSeedLooksUnread() internal view {
+        if (bytes(vm.envOr("COTEJO_KEEPER_MNEMONIC", string(""))).length != 0) return;
+        if (_reporterFor(0) != address(0)) return;
+        console2.log("  [WARN] no keeper seed was read. If .env has one, check it is in quotes:");
+        console2.log("         COTEJO_KEEPER_MNEMONIC=\"word word ... word\"");
     }
 
     /// @notice The reporter address authorised on source `index`.
