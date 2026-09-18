@@ -11,6 +11,12 @@ out/
 /broadcast/*/31337/
 /broadcast/**/dry-run/
 
+# A broadcast folder with transactions and zero receipts is a run that never
+# landed. Committing one publishes a deployment that did not happen, which is
+# the single claim this repo cannot afford to make by accident. Real broadcasts
+# are added deliberately, by path, once their receipts exist.
+/broadcast/
+
 # Docs
 docs/
 
