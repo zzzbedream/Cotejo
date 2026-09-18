@@ -60,6 +60,33 @@ Comprobado leyendo la cadena, no el log del despliegue:
 instalada, así que no hay precio. Servirá cuando la fase 3 ejecute la ruta, 48 h después de que
 la fase 2 la encole.
 
+### Fase 2, completada el 18 de septiembre de 2026
+
+| Qué | Estado |
+|---|---|
+| `WBT/USD` habilitado en las cinco fuentes | hecho |
+| Cinco reporters autorizados | hecho, `isReporter` e `isAuthorised` = `true` en las cinco |
+| Guardián `0xdAB216…b8f1` | **encolado**, ejecutable 2026-09-20 22:23 UTC |
+| Ruta `WBT/USD` | **encolada**, ejecutable 2026-09-20 15:19 UTC |
+
+Parámetros de la ruta encolada, leídos del governor: cinco fuentes,
+`minSources = 3`, `maxDeviationBps = 200`, `maxStalenessSeconds = 1800`,
+`reporterHeartbeatSeconds = 900`, `maxSourcesPerOperatorGroup = 1`.
+
+**Los dos timelocks no vencen a la vez, y la diferencia son 7 horas.** La ruta se
+encoló antes que el guardián, así que entre las 15:19 y las 22:23 del día 20 el
+oráculo sirve precio sin que nadie pueda pausarlo.
+
+Se deja así a propósito, y la razón importa: pausar un activo protege a los
+contratos que lo leen, y hoy no hay ninguno — el mercado no está desplegado. Una
+pausa en esa ventana no defendería nada, y esperar siete horas costaría siete
+horas de uptime, que es la única métrica que este despliegue acumula dejándolo
+correr. **Si hubiera un mercado en vivo la decisión sería la contraria**: se
+esperaría, o se habría encolado el guardián primero.
+
+La lección operativa, para la próxima vez: **el guardián se encola antes que la
+ruta**, porque su timelock corre en paralelo y no cuesta nada adelantarlo.
+
 **Lo que no está desplegado:** el mercado de préstamo. Con las rutas aún sin instalar no
 satisface sus propias reglas de admisión, y la regla no se debilita para que quepa.
 

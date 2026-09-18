@@ -15,9 +15,9 @@
   },
   "config": {
     "owner": "0x4e5A7B9F7F66c208bDDeD352356B33a3A634AD6D",
-    "guardian": "0x0000000000000000000000000000000000000000",
+    "guardian": "0xdAB216916841178dFedf75Beb214d981973ab8f1",
     "governorBound": true,
-    "assetsEnabled": false,
+    "assetsEnabled": true,
     "routesProposed": false,
     "routesExecuted": false
   },
