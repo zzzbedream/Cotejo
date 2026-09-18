@@ -87,6 +87,46 @@ esperaría, o se habría encolado el guardián primero.
 La lección operativa, para la próxima vez: **el guardián se encola antes que la
 ruta**, porque su timelock corre en paralelo y no cuesta nada adelantarlo.
 
+### Primer precio en cadena, 18 de septiembre de 2026
+
+El keeper publicó su primer ciclo a las 22:32 UTC. Cinco atestaciones EIP-712,
+una por fuente, relayadas por `0xE6997E2b3b1952dd9333845c64961F8ab872A516`:
+
+| Fuente | Hash |
+|---|---|
+| cotejo-keeper-1 | [`0xaa347add…af7d`](https://explorer.testnet.whitechain.io/tx/0xaa347add0c00b01f0bbe950830455b0c9aefb791ed7ce5b78f2f5f4aae9eaf7d) |
+| cotejo-keeper-2 | [`0xa0811607…1fe8`](https://explorer.testnet.whitechain.io/tx/0xa081160768a560a957d3294262ab6691b54e9ba4ac5312fee22f1aaa62a51fe8) |
+| cotejo-keeper-3 | [`0x5cfb3fe8…77a8`](https://explorer.testnet.whitechain.io/tx/0x5cfb3fe8be4ba210d2f5ac02a297c8210e93f8f9b5040c2f05744d9dd6b377a8) |
+| cotejo-keeper-4 | [`0xdb03030f…f0ce`](https://explorer.testnet.whitechain.io/tx/0xdb03030f3fdf015c2868dd11bf9aeb1d73abc11e91ed9188d5bc674f1a9ef0ce) |
+| cotejo-keeper-5 | [`0xbd657ebf…7653`](https://explorer.testnet.whitechain.io/tx/0xbd657ebf4730202e18ad1b22a20f459d012bddfda9c2668bbcc92e0b1ffa7653) |
+
+Lo almacenado, leído de las cinco con `latestObservation`:
+
+```
+price      83.348500000000000000   WBT/USD, 18 decimales
+depthUsd   668760                  suelo configurado: 250000
+observedAt 1789770763
+reporter   distinto en cada fuente
+group      keccak("cotejo-keeper-N"), distinto en cada fuente
+```
+
+**Los cinco precios son idénticos bit a bit. La desviación es 0,00 bps contra una
+tolerancia de 200.** No es una coincidencia afortunada: es la consecuencia
+aritmética de que un proceso lea un libro y firme cinco veces. INV-2 rechaza un
+conjunto cuyo diferencial supera la tolerancia de la ruta, y aquí no disparará
+nunca, porque cinco firmas sobre un mismo número no pueden discrepar.
+
+El invariante no está roto: está **inactivo**, y seguirá inactivo hasta que los
+cinco precios vengan de cinco sitios. Conviene decirlo así, con el número
+delante, porque un panel verde hoy demuestra agregación, frescura, quórum y
+concentración de operador funcionando sobre datos reales — y no demuestra nada
+sobre la comprobación de desviación, que es la que la gente asume que lo demuestra
+todo.
+
+El router sigue negando el precio con `Cotejo__RouteNotConfigured` hasta que la
+ruta se instale. Los datos están en las fuentes; lo que falta es la ruta que los
+agrega.
+
 **Lo que no está desplegado:** el mercado de préstamo. Con las rutas aún sin instalar no
 satisface sus propias reglas de admisión, y la regla no se debilita para que quepa.
 

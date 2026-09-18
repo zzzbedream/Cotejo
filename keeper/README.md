@@ -21,6 +21,28 @@ from WhiteBIT, or a single bug in this file moves all five sources at once —
 which is precisely the correlated failure the deviation check cannot catch,
 because there is nothing left to disagree with it.
 
+### Measured, not asserted
+
+The first live cycle, 18 September 2026, wrote this to all five sources:
+
+```
+price      83.348500000000000000   (identical on all five, bit for bit)
+depthUsd   668760                  (identical)
+observedAt 1789770763              (identical)
+deviation  0.00 bps                route tolerance: 200 bps
+```
+
+That zero is the whole argument, on chain and checkable. INV-2 rejects a set
+whose spread exceeds the route tolerance, and it will never fire here, because
+five signatures over one number cannot disagree with each other. The invariant
+is not broken — it is idle, and it will stay idle until the five prices come
+from five places.
+
+So the honest reading of a healthy panel today is narrow: it shows the
+aggregation, staleness, quorum and operator-concentration checks running against
+real data, and it does not show the deviation check doing anything, because
+there is nothing for it to catch.
+
 Nothing here is hidden from the chain: the on-chain operator groups are named
 `cotejo-keeper-1` … `cotejo-keeper-5`, which claim no venue and imply no
 relationship with anyone. Replacing this with genuinely independent operators is
