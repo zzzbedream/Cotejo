@@ -314,6 +314,7 @@ verificación y el guion de la prueba en vivo están en [DEPLOYMENT.md](DEPLOYME
 |---|---|
 | Scripts de despliegue reanudables | [script/01_Deploy.s.sol](script/01_Deploy.s.sol), [02_Configure](script/02_Configure.s.sol), [03_ExecuteRoutes](script/03_ExecuteRoutes.s.sol) |
 | Direcciones desplegadas | [deployments/1874.json](deployments/1874.json) |
+| Keeper (un proceso, cinco firmas) | [keeper/](keeper/) |
 | Panel de verificación (sin build, sin servidor) | [panel/index.html](panel/index.html) |
 | Prueba adversarial en vivo | [script/LiveTest.s.sol](script/LiveTest.s.sol), ensayada en [LiveDemo.t.sol](test/scenarios/LiveDemo.t.sol) |
 

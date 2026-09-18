@@ -1,0 +1,22 @@
+{
+  "name": "cotejo-keeper",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "One process, five signatures. Not a reporter fleet.",
+  "scripts": {
+    "build": "tsc",
+    "check": "tsc --noEmit",
+    "start": "tsx src/index.ts",
+    "once": "tsx src/index.ts --once",
+    "addresses": "tsx src/index.ts --addresses"
+  },
+  "dependencies": {
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "@types/node": "^22.0.0"
+  }
+}
