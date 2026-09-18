@@ -19,8 +19,17 @@ jobs:
           persist-credentials: false
           submodules: recursive
 
+      # Pinned, and not to `stable`. An unpinned toolchain means a Foundry
+      # release can turn this repository red without anybody touching it, and
+      # `forge fmt` in particular changed its line wrapping between 1.7.1 and
+      # 1.8.3 - each version undoes the other's formatting. 1.7.1 is also the
+      # version that built, tested and deployed everything in `deployments/`
+      # and `broadcast/`, so CI verifies the artifacts with the toolchain that
+      # produced them rather than with whatever shipped this week.
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
 
       - name: Show Forge version
         run: forge --version
