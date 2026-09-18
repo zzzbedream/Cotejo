@@ -158,6 +158,25 @@ contraseña necesita una terminal interactiva. Los ejecuta una persona.
 
 ## 4. Despliegue
 
+### Antes de copiar nada: PowerShell no entiende `\`
+
+Todos los bloques de este documento están escritos para un shell POSIX, donde `\` al final
+de la línea continúa el comando. **En PowerShell `\` no es continuación**: el carácter de
+continuación es el acento grave. Pegar un comando con `\` en PowerShell no da un error de
+sintaxis — es peor: cada `\` se convierte en un **argumento posicional más**, y
+`forge script` pasa los argumentos posicionales a la función que va a llamar.
+
+Como `run()` no acepta argumentos ni devuelve nada, el resultado es:
+
+```
+Error: encode length mismatch: expected 0 types, got 2
+```
+
+Dos `\` pegados, dos argumentos de más, "got 2". El mensaje no menciona el shell ni los
+argumentos, así que se lee como un fallo del script cuando no lo es.
+
+En Windows, **pega cada comando en una sola línea**.
+
 ### Fase 1 — contratos
 
 ```bash
@@ -169,11 +188,17 @@ forge script script/01_Deploy.s.sol:Deploy \
   --verifier-url https://explorer.testnet.whitechain.io/api/
 ```
 
+Una sola línea, para PowerShell o cmd:
+
+```powershell
+forge script script/01_Deploy.s.sol:Deploy --rpc-url https://rpc.testnet.whitechain.io --account cotejo-deployer --broadcast --slow --verify --verifier blockscout --verifier-url https://explorer.testnet.whitechain.io/api/
+```
+
 `--slow` envía las transacciones en secuencia, lo que hace que un fallo a mitad deje un estado
 limpio y reanudable. Requiere TTY para la contraseña del keystore: ejecútalo tú, no un agente.
 
-Despliega, en orden de menor a mayor riesgo: las tres `AttestationSource` (independientes entre
-sí, las más baratas de rehacer), el `PriceRouter`, el `RouteGovernor`, los tres adaptadores, y
+Despliega, en orden de menor a mayor riesgo: las cinco `AttestationSource` (independientes entre
+sí, las más baratas de rehacer), el `PriceRouter`, el `RouteGovernor`, el adaptador WBT/USD, y
 por último `setGovernor`, que es la única llamada irreversible de la fase — se puede hacer
 exactamente una vez, y después el deployer pierde todo poder sobre rutas, pausa y precios.
 
@@ -186,6 +211,10 @@ broadcast entero): imprime la llamada para que la haga el owner.
 forge script script/02_Configure.s.sol:Configure \
   --rpc-url https://rpc.testnet.whitechain.io \
   --account cotejo-deployer --broadcast --slow
+```
+
+```powershell
+forge script script/02_Configure.s.sol:Configure --rpc-url https://rpc.testnet.whitechain.io --account cotejo-deployer --broadcast --slow
 ```
 
 Habilita el par en las cinco fuentes, registra las claves de reporter, nombra al guardián, y
