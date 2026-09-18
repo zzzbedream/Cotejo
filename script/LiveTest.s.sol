@@ -31,11 +31,12 @@ import {CotejoErrors} from "../src/libraries/CotejoErrors.sol";
 ///      strictly forward, so without that offset the injection would be rejected as a replay
 ///      before it ever reached the router.
 ///
-/// Keys: `COTEJO_DEMO_MNEMONIC` must be set. It is never read from a file in this repo, has
-///       no default, and should be a throwaway used only on testnet.
+/// Keys: `COTEJO_KEEPER_MNEMONIC`, falling back to `COTEJO_DEMO_MNEMONIC`. Neither is read
+///       from a versioned file, neither has a default, and both should be throwaway seeds used
+///       only on testnet.
 ///
 /// Usage:
-///   export COTEJO_DEMO_MNEMONIC="..."
+///   export COTEJO_KEEPER_MNEMONIC="..."
 ///   forge script script/LiveTest.s.sol:LiveTest \
 ///     --rpc-url https://rpc.testnet.whitechain.io \
 ///     --account <keystore-account> --broadcast --slow -vv
@@ -60,7 +61,11 @@ contract LiveTest is CotejoState {
             require(sources[i] != address(0), "Cotejo: an AttestationSource is missing.");
         }
 
-        string memory mnemonic = vm.envString("COTEJO_DEMO_MNEMONIC");
+        // Same seed the configuration script authorised, so the demo signs with keys
+        // `AttestationSource` already accepts. `COTEJO_DEMO_MNEMONIC` stays as a fallback for a
+        // run that deliberately uses a different set.
+        string memory mnemonic = vm.envOr("COTEJO_KEEPER_MNEMONIC", string(""));
+        if (bytes(mnemonic).length == 0) mnemonic = vm.envString("COTEJO_DEMO_MNEMONIC");
         uint256[SOURCE_COUNT] memory keys;
         address[SOURCE_COUNT] memory signers;
         for (uint256 i; i < SOURCE_COUNT; ++i) {

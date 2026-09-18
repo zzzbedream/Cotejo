@@ -83,7 +83,10 @@ contract Configure is CotejoState {
                 source.setReporter(reporter, true);
                 console2.log("  [reporter]", group, reporter);
             } else if (reporter == address(0)) {
-                console2.log("  [WARN] no reporter key configured for group:", group);
+                // Not a failure, but the oracle cannot ever serve a price in this state: the
+                // route will install on schedule and then refuse with
+                // `Cotejo__InsufficientSources`, because no key is allowed to attest.
+                console2.log("  [WARN] no reporter for group, this source can never price:", group);
             }
         }
 
@@ -99,7 +102,11 @@ contract Configure is CotejoState {
             }
             writeConfigAddress("guardian", guardian);
         } else if (guardian == address(0)) {
-            console2.log("  [WARN] COTEJO_GUARDIAN unset: nobody can pause this deployment");
+            // Worth more than a shrug: granting the pause power is itself timelocked by 48h
+            // (A6.3), so every hour this stays unset is an hour added to the moment the
+            // deployment first becomes pausable. It does not block anything today, and that is
+            // exactly why it gets forgotten until the day it matters.
+            console2.log("  [WARN] COTEJO_GUARDIAN unset: nobody can pause, and granting it costs 48h");
         }
 
         writeFlag("assetsEnabled", true);
@@ -169,17 +176,40 @@ contract Configure is CotejoState {
         }
     }
 
-    /// @dev Reporter keys come from the environment, one per operator group, never from a
-    ///      versioned file. An unset key leaves that source with no authorised reporter,
-    ///      which is safe — it simply cannot produce a price — and is reported as a warning.
-    /// @dev One env var per keeper key: `COTEJO_REPORTER_1` .. `COTEJO_REPORTER_5`.
+    /// @notice The reporter address authorised on source `index`.
     ///
-    ///      In the testnet deployment all five are derived from one operator, and that is
-    ///      stated rather than obscured: operator independence is enforced by the contracts
-    ///      and is **not yet real**. The names carry no venue and imply no relationship.
+    /// @dev Two ways in, checked in this order:
+    ///
+    ///      1. `COTEJO_REPORTER_1` .. `COTEJO_REPORTER_5`, an explicit address per group. Use
+    ///         this once the five keys really are held by five operators, because then no
+    ///         single seed exists that could derive them all.
+    ///      2. `COTEJO_KEEPER_MNEMONIC`, from which address `index` is derived.
+    ///
+    ///      The second path exists because of the failure it removes. Authorisation and
+    ///      signing are separate steps performed at different times: this script decides whose
+    ///      signature `AttestationSource` will accept, and the keeper decides which key signs.
+    ///      When those two lists are typed in by hand they can disagree, and the symptom is
+    ///      not an error — it is an oracle that stays silent with everything apparently
+    ///      configured, because `submit` is permissionless and a signature from an
+    ///      unauthorised key is simply refused. Deriving both sides from one seed makes the
+    ///      disagreement impossible to express.
+    ///
+    ///      An unset reporter leaves that source with no authorised key, which is safe — it
+    ///      simply cannot produce a price — and is reported as a warning rather than a failure.
+    ///
+    ///      In this testnet deployment all five derive from one seed, and that is stated rather
+    ///      than obscured: operator independence is enforced by the contracts and is **not yet
+    ///      real**. The group names carry no venue and imply no relationship.
     function _reporterFor(uint256 index) internal view returns (address) {
-        return vm.envOr(
-            string.concat("COTEJO_REPORTER_", vm.toString(index + 1)), address(0)
-        );
+        address explicitAddr =
+            vm.envOr(string.concat("COTEJO_REPORTER_", vm.toString(index + 1)), address(0));
+        if (explicitAddr != address(0)) return explicitAddr;
+
+        string memory mnemonic = vm.envOr("COTEJO_KEEPER_MNEMONIC", string(""));
+        if (bytes(mnemonic).length == 0) return address(0);
+
+        // casting to 'uint32' is safe because the caller bounds index by SOURCE_COUNT.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return vm.addr(vm.deriveKey(mnemonic, uint32(index)));
     }
 }
