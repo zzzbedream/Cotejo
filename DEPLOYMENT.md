@@ -131,6 +131,51 @@ agrega.
 satisface sus propias reglas de admisión, y la regla no se debilita para que quepa.
 
 
+### El keeper deja de depender de una máquina, 23:07 UTC
+
+El bucle local dura lo que dure la sesión de terminal. Desde las **23:07 UTC del
+18 de septiembre de 2026** el latido lo publica
+[`.github/workflows/keeper.yml`](.github/workflows/keeper.yml) en el cron de
+GitHub, cada 10 minutos. Ahí arranca el reloj de uptime que la solicitud cita.
+
+Primer ciclo alojado, confirmado con `cast receipt` (`status = 1` en las cinco) y
+releyendo las fuentes con `latestObservation`, no fiándose del log:
+
+| Fuente | Hash |
+|---|---|
+| cotejo-keeper-1 | [`0xa5be7cb2…c89c`](https://explorer.testnet.whitechain.io/tx/0xa5be7cb22c33b3d3439f8339780a3505692d878ffc98f88ba6aee4ff6cd8c89c) |
+| cotejo-keeper-2 | [`0xd5ad0a16…c400`](https://explorer.testnet.whitechain.io/tx/0xd5ad0a163d191e30a71eddbb60f4678fe3e848163e8200f6360f21dd264dc400) |
+| cotejo-keeper-3 | [`0x96a280b2…3d30`](https://explorer.testnet.whitechain.io/tx/0x96a280b226590f7c7731e1b736b051e011d0f0829d373d2e1ceb1a6716023d30) |
+| cotejo-keeper-4 | [`0xe2f69085…6f3e`](https://explorer.testnet.whitechain.io/tx/0xe2f69085fba7a5ab3ef990e31489176ac2d8170aa534645a4adffb00861e6f3e) |
+| cotejo-keeper-5 | [`0x52977f1f…ca9f`](https://explorer.testnet.whitechain.io/tx/0x52977f1f40a45f7f18c62650707eb76b27986436e63b7f25a402a3476627ca9f) |
+
+```
+price      83.198500000000000000   WBT/USD, 18 decimales
+depthUsd   652391                  suelo configurado: 250000
+observedAt 1789772851
+```
+
+La desviación sigue siendo 0,00 bps, por la misma razón aritmética de siempre.
+Alojar el keeper no cambia nada de eso: mueve el punto único de fallo de un
+portátil a GitHub, no lo elimina.
+
+#### Lo que falló primero, que es la parte útil
+
+El primer disparo salió en rojo con las cinco fuentes en `not authorised` y el
+relayer a 0 WBT. Causa: el secreto contenía **otra mnemónica**, no la que
+`02_Configure` autorizó. BIP-39 lleva checksum, así que una palabra mal copiada
+habría lanzado un error de mnemónica inválida — que derivara cinco direcciones
+válidas pero distintas probaba que era una semilla entera diferente, no una
+transcripción rota.
+
+Lo relevante no es el fallo sino cómo se vio. Hasta ese día `npm run once` salía
+con código 0 aunque los cinco `submit` se saltaran, y un runner programado
+reporta éxito por el código de salida: la ejecución habría salido **verde**, sin
+publicar un solo precio, sumando un latido a un historial de uptime inexistente.
+Un ciclo que no publica nada ahora sale distinto de cero. La regla general: la
+telemetría que solo sabe decir que sí no es telemetría.
+
+
 ## 2. Presupuesto
 
 ### Coste único: desplegar — **medido**, no estimado
