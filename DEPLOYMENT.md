@@ -123,18 +123,36 @@ cast wallet import cotejo-deployer --interactive
 cast balance <tu-dirección> --rpc-url https://rpc.testnet.whitechain.io
 ```
 
-Variables de entorno (ninguna se versiona):
+Variables de entorno: copiar la plantilla y rellenarla.
 
 ```bash
-export COTEJO_OWNER=0x...              # multisig en producción; por defecto, el deployer
-export COTEJO_GUARDIAN=0x...           # único rol que puede pausar
-export COTEJO_REPORTER_1=0x...         # una clave de reporter por grupo de operador
-export COTEJO_REPORTER_2=0x...         # las cinco son nuestras en este despliegue:
-export COTEJO_REPORTER_3=0x...         # la independencia de operador la imponen los
-export COTEJO_REPORTER_4=0x...         # contratos y todavía no es real
-export COTEJO_REPORTER_5=0x...
-export COTEJO_MIN_DEPTH_USD=250000
+cp .env.example .env
 ```
+
+`.env` está en `.gitignore`; `.env.example` no, así que la plantilla no lleva ningún valor real.
+Las variables son:
+
+| Variable | Qué es | ¿Secreto? |
+|---|---|---|
+| `COTEJO_OWNER` | Dueño de router, governor y fuentes. Vacío = el propio deployer | No |
+| `COTEJO_GUARDIAN` | Único rol que puede pausar. Concederlo espera 48 h (A6.3) | No |
+| `COTEJO_REPORTER_1..5` | Una **dirección** de reporter por grupo de operador | No |
+| `COTEJO_MIN_DEPTH_USD` | Profundidad mínima declarada para aceptar una atestación | No |
+| `COTEJO_DEMO_MNEMONIC` | Mnemónico desechable de `LiveTest.s.sol` | **Sí** |
+
+`COTEJO_REPORTER_1..5` son direcciones, no claves. Lo que autoriza una escritura en
+`AttestationSource` es la firma EIP-712, no el `msg.sender`; estas variables solo dicen de quién
+se acepta esa firma. Una variable sin valor deja esa fuente sin reporter autorizado, que es
+seguro — no puede producir precio — y el script lo reporta como aviso.
+
+### La clave del deployer no vive en `.env`
+
+Foundry firma desde un keystore cifrado. Una clave en un `.env` está en claro en el disco, entra
+en el historial del shell en cuanto se hace `export`, y aparece en `ps` y en cualquier volcado de
+proceso. El keystore pide la contraseña por TTY y nunca escribe la clave en claro.
+
+Eso también significa que **ningún agente puede ejecutar estos comandos**: el prompt de
+contraseña necesita una terminal interactiva. Los ejecuta una persona.
 
 ---
 
