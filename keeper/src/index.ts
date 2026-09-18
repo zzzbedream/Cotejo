@@ -29,7 +29,8 @@ async function printAddresses(): Promise<void> {
   }
 }
 
-async function cycle(): Promise<void> {
+/** Runs one pass over every source and reports how many attestations landed. */
+async function cycle(): Promise<number> {
   const obs = await readBook();
   const block = await publicClient.getBlock();
 
@@ -41,9 +42,11 @@ async function cycle(): Promise<void> {
   // Sequential, not Promise.all. The relayer is one account with one nonce, and
   // five concurrent writes would race for it; the public RPC also caps at
   // 50 req/s and this process shares that budget with the panel.
+  let sent = 0;
   for (let i = 0; i < sources.length; i++) {
     const out = await submitOne(i, sources[i], obs, block.timestamp);
     if (out.status === "sent") {
+      sent++;
       log(`  keeper-${i + 1} sent    ${out.hash}`);
     } else if (out.status === "skipped") {
       log(`  keeper-${i + 1} skipped ${out.reason}`);
@@ -51,6 +54,7 @@ async function cycle(): Promise<void> {
       log(`  keeper-${i + 1} FAILED  ${out.reason}`);
     }
   }
+  return sent;
 }
 
 async function main(): Promise<void> {
@@ -67,8 +71,9 @@ async function main(): Promise<void> {
   );
 
   for (;;) {
+    let sent = 0;
     try {
-      await cycle();
+      sent = await cycle();
     } catch (err) {
       // A failed cycle is survivable and a fabricated price is not. The route
       // tolerates exactly one missed beat before it starts refusing, which is
@@ -76,7 +81,16 @@ async function main(): Promise<void> {
       // number is a lie the whole system is built to prevent.
       log(`cycle failed, skipping: ${err instanceof Error ? err.message : err}`);
     }
-    if (once) return;
+    if (sent === 0) log("nothing landed this cycle");
+
+    if (once) {
+      // A scheduled runner reports success by exit status, and a green run that
+      // wrote no price is a false uptime signal — the one claim this repo
+      // cannot afford to make by accident. So a cycle that published nothing
+      // exits non-zero and shows up red in the run history.
+      if (sent === 0) process.exit(1);
+      return;
+    }
     await new Promise((r) => setTimeout(r, heartbeatSeconds * 1000));
   }
 }

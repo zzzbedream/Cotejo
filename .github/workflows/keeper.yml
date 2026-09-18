@@ -1,0 +1,65 @@
+# The keeper, hosted on GitHub's cron instead of a machine somebody has to keep
+# awake. Each run is one cycle: read the WhiteBIT book, sign five attestations,
+# relay them, exit.
+#
+# Cadence is every 10 minutes, not the 15 the route's heartbeat implies. GitHub
+# states plainly that scheduled workflows are best-effort and may be delayed
+# under load, so the schedule has to absorb that: `maxStalenessSeconds` is 1800,
+# and at a 15-minute nominal cadence a single run delayed by 15 minutes already
+# puts the route into refusal. At 10 minutes the same delay still lands inside
+# the window. The cost of that margin is roughly 720 submits/day instead of 480
+# — about 0.22 WBT/day rather than 0.147.
+#
+# Two things about this arrangement that are worth stating rather than
+# discovering: scheduled workflows are disabled automatically after 60 days
+# without repository activity, and the signing seed lives in GitHub's secret
+# store, which means GitHub and anyone with write access to this repository can
+# publish prices as all five sources. On a testnet whose faucet pays 0.5 WBT a
+# day that is an acceptable trade; with anything of value behind the oracle it
+# would not be, and the seed must never be one that has held mainnet funds.
+
+name: Keeper
+
+permissions: {}
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+# One relayer account means one nonce. Two overlapping runs would race for it
+# and one would be rejected, so runs queue instead of overlapping.
+concurrency:
+  group: cotejo-keeper
+  cancel-in-progress: false
+
+jobs:
+  attest:
+    name: Publish one round of attestations
+    runs-on: ubuntu-latest
+    # A cycle takes well under a minute. This cap exists so that a run hung on
+    # an unresponsive RPC cannot sit in the concurrency group blocking the next.
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: keeper/package-lock.json
+
+      - name: Install
+        working-directory: keeper
+        run: npm ci
+
+      - name: Submit
+        working-directory: keeper
+        env:
+          COTEJO_KEEPER_MNEMONIC: ${{ secrets.COTEJO_KEEPER_MNEMONIC }}
+          COTEJO_RELAYER_INDEX: ${{ vars.COTEJO_RELAYER_INDEX || '100' }}
+        run: npm run once
