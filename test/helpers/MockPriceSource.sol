@@ -22,6 +22,13 @@ contract MockPriceSource is IPriceSource {
     ///         Models a source griefing the router.
     bool public gasBomb;
 
+    /// @notice When true, only `latestDepthUsd` reverts; the price still serves.
+    /// @dev A source can know a price without knowing a book. `ChainlinkCompatSource` answers
+    ///      zero in that situation, but a third-party source is free to revert instead, and
+    ///      the router has to treat both the same way: no depth, which propagates to a zero
+    ///      borrow ceiling. Separate from `reverts`, which takes the price down too.
+    bool public depthReverts;
+
     constructor(bytes32 asset_, bytes32 group_) {
         asset = asset_;
         _group = group_;
@@ -44,6 +51,10 @@ contract MockPriceSource is IPriceSource {
 
     function setGasBomb(bool gasBomb_) external {
         gasBomb = gasBomb_;
+    }
+
+    function setDepthReverts(bool depthReverts_) external {
+        depthReverts = depthReverts_;
     }
 
     function latestPrice(bytes32 asset_)
@@ -75,7 +86,7 @@ contract MockPriceSource is IPriceSource {
     }
 
     function latestDepthUsd(bytes32 asset_) external view override returns (uint256) {
-        if (reverts) revert CotejoErrors.Cotejo__NoPrice(asset_);
+        if (reverts || depthReverts) revert CotejoErrors.Cotejo__NoPrice(asset_);
         if (asset_ != asset) revert CotejoErrors.Cotejo__AssetNotSupported(asset_);
         if (_observedAt == 0) revert CotejoErrors.Cotejo__NoPrice(asset_);
         return _depthUsd;

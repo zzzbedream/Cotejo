@@ -191,6 +191,72 @@ contract RouteGovernorTest is CotejoTestBase {
         assertFalse(router.isGuardian(second), "revocation is immediate");
     }
 
+    /// @notice Every guard on the guardian grant, which is the only privilege escalation in
+    ///         this contract.
+    ///
+    /// @dev A6.3 puts the grant behind the same 48h wait as a route change, because a guardian
+    ///      can pause an asset and pausing an asset freezes liquidation in every market that
+    ///      reads it. The revocation stays immediate, so the timelock only ever delays gaining
+    ///      power, never losing it.
+    ///
+    ///      All four guards had zero coverage. A timelock whose bypasses are untested is a
+    ///      timelock on paper.
+    function test_guardianGrantRefusesEveryMalformedPath() public {
+        address candidate = makeAddr("candidate");
+        bytes32 proposalId = keccak256(abi.encode("cotejo.guardian", candidate));
+
+        // Nothing queued yet: there is nothing to execute.
+        vm.expectRevert(abi.encodeWithSelector(CotejoErrors.Cotejo__NoSuchProposal.selector, proposalId));
+        governor.executeGuardian(candidate);
+
+        vm.prank(owner);
+        vm.expectRevert(CotejoErrors.Cotejo__InvalidRouteParameter.selector);
+        governor.proposeGuardian(address(0));
+
+        vm.prank(owner);
+        governor.proposeGuardian(candidate);
+        uint64 eta = governor.getPendingGuardian(candidate);
+        assertEq(eta, uint64(block.timestamp + governor.ROUTE_TIMELOCK()), "eta must be the full wait");
+
+        // Re-proposing would otherwise be a way to keep moving the eta, or to obscure which
+        // proposal is actually live.
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(CotejoErrors.Cotejo__ProposalAlreadyQueued.selector, proposalId));
+        governor.proposeGuardian(candidate);
+
+        // One second short of the wait is still short of the wait.
+        vm.warp(eta - 1);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CotejoErrors.Cotejo__TimelockNotElapsed.selector, proposalId, eta, block.timestamp
+            )
+        );
+        governor.executeGuardian(candidate);
+        assertFalse(router.isGuardian(candidate), "no power before the wait is over");
+
+        // Execution is permissionless once the wait is over: the delay is the control, not
+        // who ends it. Anyone watching the queue can finish a grant they saw coming.
+        vm.warp(eta);
+        vm.prank(makeAddr("bystander"));
+        governor.executeGuardian(candidate);
+        assertTrue(router.isGuardian(candidate), "the wait, not the caller, is the gate");
+        assertEq(governor.getPendingGuardian(candidate), 0, "the proposal must be consumed");
+    }
+
+    function test_guardianProposalsAreOwnerOnly() public {
+        address candidate = makeAddr("candidate2");
+
+        vm.prank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, stranger));
+        governor.proposeGuardian(candidate);
+
+        _grantGuardian(candidate);
+
+        vm.prank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, stranger));
+        governor.removeGuardian(candidate);
+    }
+
     function test_constructorRejectsZeroRouter() public {
         vm.expectRevert(CotejoErrors.Cotejo__InvalidRouteParameter.selector);
         new RouteGovernor(address(0), owner);

@@ -72,3 +72,21 @@ contract ReentrantIrm is IIrm {
         return 0;
     }
 }
+
+/// @notice An interest rate model that returns an absurd rate instead of reverting.
+/// @dev The complement to `RevertingIrm`. A model that fails loudly is caught by the
+///      `try/catch`; a model that answers politely with 100% per second is not, and reaches
+///      the accrual arithmetic intact. M5 is the clamp that stops it, and until this existed
+///      the clamp was documented as a defence and never exercised: a captured whitelist entry
+///      could not be shown to be bounded, only asserted to be.
+contract HugeRateIrm is IIrm {
+    uint256 public constant RATE = 1e18; // 100% per second, ~4 million times the cap.
+
+    function borrowRate(MarketParams calldata, Market calldata) external pure returns (uint256) {
+        return RATE;
+    }
+
+    function borrowRateView(MarketParams calldata, Market calldata) external pure returns (uint256) {
+        return RATE;
+    }
+}
