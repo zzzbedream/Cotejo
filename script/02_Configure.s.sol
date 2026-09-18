@@ -216,8 +216,7 @@ contract Configure is CotejoState {
     ///      than obscured: operator independence is enforced by the contracts and is **not yet
     ///      real**. The group names carry no venue and imply no relationship.
     function _reporterFor(uint256 index) internal view returns (address) {
-        address explicitAddr =
-            vm.envOr(string.concat("COTEJO_REPORTER_", vm.toString(index + 1)), address(0));
+        address explicitAddr = vm.envOr(string.concat("COTEJO_REPORTER_", vm.toString(index + 1)), address(0));
         if (explicitAddr != address(0)) return explicitAddr;
 
         string memory mnemonic = vm.envOr("COTEJO_KEEPER_MNEMONIC", string(""));

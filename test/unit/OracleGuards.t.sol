@@ -96,9 +96,8 @@ contract OracleGuardsTest is CotejoTestBase {
     // --------------------------------------------------------------------------------
 
     function test_attestationSourceRefusesDepthForUnknownOrUnreportedAssets() public {
-        AttestationSource source = new AttestationSource(
-            "Cotejo", "1", keccak256("cotejo.source.test"), GROUP_A, owner
-        );
+        AttestationSource source =
+            new AttestationSource("Cotejo", "1", keccak256("cotejo.source.test"), GROUP_A, owner);
 
         // Never enabled: the source has no opinion about this asset at all.
         vm.expectRevert(abi.encodeWithSelector(CotejoErrors.Cotejo__AssetNotSupported.selector, OTHER_ASSET));

@@ -163,9 +163,7 @@ contract CoverageGapsTest is MarketTestBase {
 
         assertEq(sharesIn, sharesBefore, "supply by shares must mint exactly what was asked");
         assertEq(
-            market.positionOf(id, supplier).supplyShares,
-            sharesBefore * 2,
-            "position must hold both deposits"
+            market.positionOf(id, supplier).supplyShares, sharesBefore * 2, "position must hold both deposits"
         );
         // Supplying by shares rounds the asset cost up, so the protocol never mints shares
         // that were underpaid for.
@@ -321,7 +319,9 @@ contract CoverageGapsTest is MarketTestBase {
         market.proposeIrm(address(irm));
 
         market.proposeIrm(fresh);
-        assertEq(market.pendingIrm(fresh), uint64(block.timestamp + market.IRM_TIMELOCK()), "eta must be readable");
+        assertEq(
+            market.pendingIrm(fresh), uint64(block.timestamp + market.IRM_TIMELOCK()), "eta must be readable"
+        );
 
         // Already pending: re-proposing would otherwise be a way to keep the eta moving.
         vm.expectRevert(MarketErrors.Market__InvalidParameter.selector);
@@ -457,7 +457,9 @@ contract CoverageGapsTest is MarketTestBase {
         // Second call in the same block: `elapsed == 0` returns early, so nothing moves.
         vm.prank(attacker);
         market.accrueInterest(params);
-        assertEq(market.marketOf(id).totalBorrowAssets, afterFirst, "a second call in the same block is a no-op");
+        assertEq(
+            market.marketOf(id).totalBorrowAssets, afterFirst, "a second call in the same block is a no-op"
+        );
     }
 
     /// @dev With no debt outstanding the accrual body is skipped entirely and only the clock
@@ -587,9 +589,7 @@ contract CoverageGapsTest is MarketTestBase {
         vm.warp(block.timestamp + 73 hours);
 
         vm.prank(liquidator);
-        vm.expectRevert(
-            abi.encodeWithSelector(MarketErrors.Market__NoPriceAnchor.selector, address(adapter))
-        );
+        vm.expectRevert(abi.encodeWithSelector(MarketErrors.Market__NoPriceAnchor.selector, address(adapter)));
         market.liquidateDegraded(params, borrower, 1);
     }
 
@@ -707,7 +707,9 @@ contract CoverageGapsTest is MarketTestBase {
     ///      governor's timelock and re-publishing prices afterwards so nothing is stale.
     function _recommitBothRoutesAt(uint16 deviationBps) internal {
         address[] memory routeSources = new address[](SOURCE_COUNT);
-        for (uint256 i; i < SOURCE_COUNT; ++i) routeSources[i] = address(sources[i]);
+        for (uint256 i; i < SOURCE_COUNT; ++i) {
+            routeSources[i] = address(sources[i]);
+        }
 
         IPriceRouter.Route memory r = IPriceRouter.Route({
             sources: routeSources,
@@ -818,7 +820,9 @@ contract CoverageGapsTest is MarketTestBase {
         _allAttestLoanAt(1, 24);
 
         vm.expectRevert(
-            abi.encodeWithSelector(CotejoErrors.Cotejo__PrecisionLoss.selector, uint256(1), uint8(24), uint8(18))
+            abi.encodeWithSelector(
+                CotejoErrors.Cotejo__PrecisionLoss.selector, uint256(1), uint8(24), uint8(18)
+            )
         );
         adapter.price();
 

@@ -352,8 +352,7 @@ contract AttestationSourceTest is Test {
         _submit(_attestation(100e18, 18, block.timestamp, MIN_DEPTH), reporterKey);
 
         vm.warp(block.timestamp + heartbeatSeconds);
-        AttestationSource.PriceAttestation memory att =
-            _attestation(101e18, 18, block.timestamp, MIN_DEPTH);
+        AttestationSource.PriceAttestation memory att = _attestation(101e18, 18, block.timestamp, MIN_DEPTH);
         bytes memory signature = _sign(att, reporterKey);
 
         uint256 before = gasleft();

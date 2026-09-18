@@ -221,7 +221,9 @@ contract RouteGovernorTest is CotejoTestBase {
         // Re-proposing would otherwise be a way to keep moving the eta, or to obscure which
         // proposal is actually live.
         vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(CotejoErrors.Cotejo__ProposalAlreadyQueued.selector, proposalId));
+        vm.expectRevert(
+            abi.encodeWithSelector(CotejoErrors.Cotejo__ProposalAlreadyQueued.selector, proposalId)
+        );
         governor.proposeGuardian(candidate);
 
         // One second short of the wait is still short of the wait.
