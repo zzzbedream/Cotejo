@@ -286,9 +286,29 @@ desde las fuentes, sin pasar por el router, para que la comparación sea indepen
 
 ## Despliegue y verificación pública
 
-El guion completo de despliegue en Whitechain Sepolia, los comandos exactos de verificación en
-Blockscout, el panel de verificación y el guion de la prueba en vivo están en
-[DEPLOYMENT.md](DEPLOYMENT.md).
+**Fase 1 en cadena desde el 18 de septiembre de 2026**, en Whitechain Sepolia (chain id 1874).
+Ocho contratos desplegados y verificados en Blockscout:
+
+| | |
+|---|---|
+| `PriceRouter` | [`0xB4f9C215…0Fd096`](https://explorer.testnet.whitechain.io/address/0xB4f9C2151B73eDEa730A72e9642C971d803Fd096) |
+| `RouteGovernor` | [`0x116a41d0…5341D`](https://explorer.testnet.whitechain.io/address/0x116a41d02bF43f7c15D9DB8EC3e0fDccAE55341D) |
+| `AttestationSource` × 5 | `cotejo-keeper-1..5`, una por grupo de operador |
+| `CotejoAggregatorAdapter` WBT/USD | [`0xc7624150…faE16`](https://explorer.testnet.whitechain.io/address/0xc7624150c28bF26cdF920A0715a7c0ba614faE16) |
+
+La lista completa, con lo que se comprobó leyendo la cadena en vez del log del despliegue, está
+en [DEPLOYMENT.md §1-bis](DEPLOYMENT.md).
+
+**Hoy el oráculo se niega a dar precio, y eso es lo correcto.** `latestRoundData()` revierte con
+`Cotejo__RouteNotConfigured`: los contratos existen, pero ninguna ruta está instalada todavía.
+Servirá cuando pase el timelock de 48 h. Un oráculo que devolviera algo en este estado sería el
+problema, no el progreso.
+
+**El mercado de préstamo no está desplegado** y es deliberado: sin rutas instaladas no satisface
+sus propias reglas de admisión, y la regla no se debilita para que quepa.
+
+El guion completo de despliegue, los comandos exactos de verificación en Blockscout, el panel de
+verificación y el guion de la prueba en vivo están en [DEPLOYMENT.md](DEPLOYMENT.md).
 
 | Entregable | Dónde |
 |---|---|

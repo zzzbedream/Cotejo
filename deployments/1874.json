@@ -4,19 +4,19 @@
   "rpcUrl": "https://rpc.testnet.whitechain.io",
   "explorer": "https://explorer.testnet.whitechain.io",
   "contracts": {
-    "PriceRouter": "0x0000000000000000000000000000000000000000",
-    "RouteGovernor": "0x0000000000000000000000000000000000000000",
-    "AttestationSource_cotejo-keeper-1": "0x0000000000000000000000000000000000000000",
-    "AttestationSource_cotejo-keeper-2": "0x0000000000000000000000000000000000000000",
-    "AttestationSource_cotejo-keeper-3": "0x0000000000000000000000000000000000000000",
-    "AttestationSource_cotejo-keeper-4": "0x0000000000000000000000000000000000000000",
-    "AttestationSource_cotejo-keeper-5": "0x0000000000000000000000000000000000000000",
-    "Adapter_WBT_USD": "0x0000000000000000000000000000000000000000"
+    "PriceRouter": "0xB4f9C2151B73eDEa730A72e9642C971d803Fd096",
+    "RouteGovernor": "0x116a41d02bF43f7c15D9DB8EC3e0fDccAE55341D",
+    "AttestationSource_cotejo-keeper-1": "0x78cce8C167583bf358B3EA1c9C409e13A7Da691a",
+    "AttestationSource_cotejo-keeper-2": "0x5886F06c5cD7eC7E07396D4787fca22A965032C5",
+    "AttestationSource_cotejo-keeper-3": "0x5eD6fe0C2bF02227153CC5482f7d316475a11625",
+    "AttestationSource_cotejo-keeper-4": "0x8A65a9ae5057eB846ce06c1E890f0aB8ADB05777",
+    "AttestationSource_cotejo-keeper-5": "0x99D1beDEa8d628b2Bd1Cd136F3348d1d680D6682",
+    "Adapter_WBT_USD": "0xc7624150c28bF26cdF920A0715a7c0ba614faE16"
   },
   "config": {
-    "owner": "0x0000000000000000000000000000000000000000",
+    "owner": "0x4e5A7B9F7F66c208bDDeD352356B33a3A634AD6D",
     "guardian": "0x0000000000000000000000000000000000000000",
-    "governorBound": false,
+    "governorBound": true,
     "assetsEnabled": false,
     "routesProposed": false,
     "routesExecuted": false
@@ -29,6 +29,6 @@
     "maxSourcesPerOperatorGroup": 1
   },
   "assets": {
-    "WBT/USD": "0x0000000000000000000000000000000000000000000000000000000000000000"
+    "WBT_USD": "0xb1ddfc4c2ff889f1a864945784030c0fce452eadccb3f877b497e9f51019bf26"
   }
 }

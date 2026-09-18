@@ -28,30 +28,80 @@ asumidos. Ninguno difiere de lo esperado.
 
 ---
 
+
+## 1-bis. Qué está desplegado
+
+Fase 1 en Whitechain Sepolia (chain id 1874), 18 de septiembre de 2026. Los ocho contratos
+están **verificados** en Blockscout.
+
+| Contrato | Dirección |
+|---|---|
+| `PriceRouter` | [`0xB4f9C2151B73eDEa730A72e9642C971d803Fd096`](https://explorer.testnet.whitechain.io/address/0xB4f9C2151B73eDEa730A72e9642C971d803Fd096) |
+| `RouteGovernor` | [`0x116a41d02bF43f7c15D9DB8EC3e0fDccAE55341D`](https://explorer.testnet.whitechain.io/address/0x116a41d02bF43f7c15D9DB8EC3e0fDccAE55341D) |
+| `AttestationSource` cotejo-keeper-1 | [`0x78cce8C167583bf358B3EA1c9C409e13A7Da691a`](https://explorer.testnet.whitechain.io/address/0x78cce8C167583bf358B3EA1c9C409e13A7Da691a) |
+| `AttestationSource` cotejo-keeper-2 | [`0x5886F06c5cD7eC7E07396D4787fca22A965032C5`](https://explorer.testnet.whitechain.io/address/0x5886F06c5cD7eC7E07396D4787fca22A965032C5) |
+| `AttestationSource` cotejo-keeper-3 | [`0x5eD6fe0C2bF02227153CC5482f7d316475a11625`](https://explorer.testnet.whitechain.io/address/0x5eD6fe0C2bF02227153CC5482f7d316475a11625) |
+| `AttestationSource` cotejo-keeper-4 | [`0x8A65a9ae5057eB846ce06c1E890f0aB8ADB05777`](https://explorer.testnet.whitechain.io/address/0x8A65a9ae5057eB846ce06c1E890f0aB8ADB05777) |
+| `AttestationSource` cotejo-keeper-5 | [`0x99D1beDEa8d628b2Bd1Cd136F3348d1d680D6682`](https://explorer.testnet.whitechain.io/address/0x99D1beDEa8d628b2Bd1Cd136F3348d1d680D6682) |
+| `CotejoAggregatorAdapter` WBT/USD | [`0xc7624150c28bF26cdF920A0715a7c0ba614faE16`](https://explorer.testnet.whitechain.io/address/0xc7624150c28bF26cdF920A0715a7c0ba614faE16) |
+
+Comprobado leyendo la cadena, no el log del despliegue:
+
+- Los ocho tienen bytecode.
+- `router.governor()` y `governor.ROUTER()` se apuntan mutuamente: `setGovernor` se ejecutó y ya
+  no puede repetirse.
+- `ROUTE_TIMELOCK` = 172 800 s = 48 h exactas.
+- Los cinco `operatorGroup` on-chain son `keccak("cotejo-keeper-N")`, leídos del evento
+  `OperatorGroupUpdated` de cada recibo. Ninguna identidad de exchange quedó escrita.
+- `adapter.ASSET()` = `keccak("WBT/USD")`, `decimals()` = 8, `description()` = `"WBT/USD"`.
+
+**El oráculo todavía se niega, y eso es correcto.** `latestRoundData()` revierte con
+`Cotejo__RouteNotConfigured` (`0xf13fd686`): los contratos están en cadena pero no hay ruta
+instalada, así que no hay precio. Servirá cuando la fase 3 ejecute la ruta, 48 h después de que
+la fase 2 la encole.
+
+**Lo que no está desplegado:** el mercado de préstamo. Con las rutas aún sin instalar no
+satisface sus propias reglas de admisión, y la regla no se debilita para que quepa.
+
+
 ## 2. Presupuesto
 
-**Estimado por simulación, no medido en cadena.** Las cifras salen de `forge script` simulando
-contra el RPC real (chain id 1874 confirmado) e incluyen el colchón que `forge` añade sobre el
-gas estimado. No son recibos. La columna en WBT las convierte al base fee mínimo real de la red
-(5 gwei); `forge` estima a 10 gwei, así que él mismo pedirá el doble.
+### Coste único: desplegar — **medido**, no estimado
 
-### Coste único: desplegar
+Cifras de los recibos reales de la fase 1 en Whitechain Sepolia, 18 de septiembre de 2026.
+Ya no son una simulación.
 
-| Contrato | Gas | WBT @ 5 gwei |
+| Contrato | Gas L2 | WBT |
 |---|---:|---:|
-| AttestationSource × 5 | 9 108 585 | 0,045543 |
-| PriceRouter | 2 451 039 | 0,012255 |
-| RouteGovernor | 1 863 825 | 0,009319 |
-| CotejoAggregatorAdapter × 1 | 533 250 | 0,002666 |
-| `setGovernor` | 65 457 | 0,000327 |
-| **Fase 1 total** | **14 022 156** | **0,070111** |
+| AttestationSource × 5 | 7 007 625 | 0,035038 |
+| PriceRouter | 1 885 619 | 0,009428 |
+| RouteGovernor | 1 433 916 | 0,007170 |
+| CotejoAggregatorAdapter | 410 193 | 0,002051 |
+| `setGovernor` | 47 391 | 0,000237 |
+| **Total fase 1** | **10 784 744** | **0,053924** |
 
-Fases 2 y 3 (configurar fuentes, proponer la ruta, ejecutarla tras el timelock) **todavía no
-son simulables**: sus scripts exigen que las direcciones de la fase 1 tengan bytecode en cadena,
-y no lo tienen. Se medirán cuando la fase 1 aterrice. No hay una estimación aquí porque
-inventarla sería peor que su ausencia.
+Gasto real contra el saldo: 50,500000 → 50,446018 WBT, es decir **0,053981 WBT**. La diferencia
+de 0,000058 WBT frente a la tabla es la tarifa de datos L1, abajo.
 
-La fase 1 cabe entera en una sola reclamación del faucet (0,5 WBT), con ~7× de margen.
+`forge` estimó 14 024 011 de gas y se gastaron 10 784 744: **un 23 % menos**. Su estimación
+lleva un colchón deliberado y además asume 10 gwei cuando la red cobró 5. Presupuestar con la
+cifra de `forge` es correcto; creer que es el coste, no.
+
+### La tarifa de datos L1, por fin con un recibo
+
+Este documento decía que el componente L1 de una OP Stack no estaba en ninguno de nuestros
+números y que solo saldría de un recibo. Salió del recibo de la primera `AttestationSource`
+(`0x9831105d…`):
+
+| | |
+|---|---:|
+| Gas L2 | 1 401 525 a 5,000 gwei = 0,00700763 WBT |
+| Gas L1 | 69 651 a 1,0995 gwei = **0,00000792 WBT** |
+| L1 como fracción del L2 | **0,11 %** |
+
+Es despreciable. El presupuesto del keeper tenía reservada la mitad del faucet para este
+componente y resultó necesitar la milésima parte. Lo que `forge` imprime como `Paid` es solo el
+L2; el total real es ~0,1 % mayor.
 
 ### Coste recurrente: mantener el latido
 
@@ -72,9 +122,9 @@ tres días como mínimo. La reclamación es manual y pasa por OAuth de GitHub: n
 automatizar. Un latido que se detiene produce `Cotejo__StalePrice`, que es el comportamiento
 correcto y es indistinguible, para quien mire desde fuera, de un despliegue roto.
 
-**Ese número no incluye la tarifa de datos L1.** Whitechain es una OP Stack y cobra un
-componente L1 por transacción que ninguna simulación local observa. La cifra real solo sale de
-un recibo. Presupuestar al doble hasta tenerlo.
+A ese número hay que sumarle la tarifa de datos L1, que ahora está medida: **+0,11 %**, unos
+0,00016 WBT al día. Este documento decía "presupuestar al doble hasta tenerlo"; con el recibo
+delante, esa reserva sobraba por tres órdenes de magnitud.
 
 El otro cuello de botella **no es el gas: es el timelock de 48 h** entre proponer y ejecutar
 rutas. El despliegue es una operación de tres días como mínimo, por diseño (INV-4).

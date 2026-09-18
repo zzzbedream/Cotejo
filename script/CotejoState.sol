@@ -116,8 +116,15 @@ abstract contract CotejoState is Script {
         vm.writeJson(vm.toString(value), statePath(), string.concat(".config.", key));
     }
 
+    /// @notice Records an asset identifier under a key a JSON path can actually address.
+    /// @dev The key is slugged, not the pair name, because `vm.writeJson` has no way to escape
+    ///      a `/` inside a path segment. Both `.assets.WBT/USD` and `.assets["WBT/USD"]` were
+    ///      tried against the real cheatcode: the first splits on the slash, the second is
+    ///      taken as a literal key called `assets["WBT/USD"]`. Either way the value lands
+    ///      somewhere nothing reads, next to the placeholder it was meant to replace, and the
+    ///      published state file ends up with two entries and the wrong one populated.
     function writeAssetId(string memory name, bytes32 id) internal {
-        vm.writeJson(vm.toString(id), statePath(), string.concat(".assets.", '["', name, '"]'));
+        vm.writeJson(vm.toString(id), statePath(), string.concat(".assets.", slug(name)));
     }
 
     // --------------------------------------------------------------------------------
@@ -143,8 +150,8 @@ abstract contract CotejoState is Script {
         return string.concat("AttestationSource_", group);
     }
 
-    function adapterKeyForAsset(string memory name) internal pure returns (string memory) {
-        // "WBT/USD" -> "Adapter_WBT_USD"
+    /// @notice A pair name as a JSON-path-safe key: "WBT/USD" -> "WBT_USD".
+    function slug(string memory name) internal pure returns (string memory) {
         bytes memory b = bytes(name);
         bytes memory out = new bytes(b.length);
         for (uint256 i; i < b.length; ++i) {
@@ -153,7 +160,11 @@ abstract contract CotejoState is Script {
             // forge-lint: disable-next-line(unsafe-typecast)
             out[i] = b[i] == "/" ? bytes1("_") : b[i];
         }
-        return string.concat("Adapter_", string(out));
+        return string(out);
+    }
+
+    function adapterKeyForAsset(string memory name) internal pure returns (string memory) {
+        return string.concat("Adapter_", slug(name));
     }
 
     // --------------------------------------------------------------------------------
