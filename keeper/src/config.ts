@@ -26,7 +26,20 @@ function loadEnv(): void {
     const eq = trimmed.indexOf("=");
     if (eq < 1) continue;
     const key = trimmed.slice(0, eq).trim();
-    const value = trimmed.slice(eq + 1).trim();
+    let value = trimmed.slice(eq + 1).trim();
+
+    // A mnemonic has spaces in it, so people quote it, and `foundry` strips the
+    // quotes while a naive reader does not. Leaving them in produces a valid
+    // BIP-39 failure several layers down, which reads as "my seed is wrong"
+    // rather than "there are quote marks in my seed".
+    if (value.length >= 2) {
+      const first = value[0];
+      const last = value[value.length - 1];
+      if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+        value = value.slice(1, -1);
+      }
+    }
+
     if (!value) continue;
     if (process.env[key] === undefined) process.env[key] = value;
   }
