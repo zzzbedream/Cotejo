@@ -1,22 +1,26 @@
-# The keeper, hosted on GitHub's cron instead of a machine somebody has to keep
-# awake. Each run is one cycle: read the WhiteBIT book, sign five attestations,
-# relay them, exit.
+# The keeper, hosted on GitHub instead of a machine somebody has to keep awake.
 #
-# Cadence is every 10 minutes, not the 15 the route's heartbeat implies. GitHub
-# states plainly that scheduled workflows are best-effort and may be delayed
-# under load, so the schedule has to absorb that: `maxStalenessSeconds` is 1800,
-# and at a 15-minute nominal cadence a single run delayed by 15 minutes already
-# puts the route into refusal. At 10 minutes the same delay still lands inside
-# the window. The cost of that margin is roughly 720 submits/day instead of 480
-# — about 0.22 WBT/day rather than 0.147.
+# The first version of this file asked GitHub's scheduler for the heartbeat: a
+# ten-minute cron, one cycle per run. Measured over the first night, that cron
+# fired **once in 4 hours 48 minutes**, and the last observation on chain was
+# 2h44m old against a 1800-second tolerance. Scheduled workflows are documented
+# as best-effort and they mean it; high-frequency schedules are dropped rather
+# than delayed.
 #
-# Two things about this arrangement that are worth stating rather than
-# discovering: scheduled workflows are disabled automatically after 60 days
-# without repository activity, and the signing seed lives in GitHub's secret
-# store, which means GitHub and anyone with write access to this repository can
-# publish prices as all five sources. On a testnet whose faucet pays 0.5 WBT a
-# day that is an acceptable trade; with anything of value behind the oracle it
-# would not be, and the seed must never be one that has held mainnet funds.
+# So the scheduler is no longer asked for a heartbeat. It is asked for a
+# restart. One process runs for 5h45m driving its own 900-second cadence, and
+# the cron only has to land once inside that window instead of every ten
+# minutes - a far weaker thing to depend on. The concurrency group queues the
+# next run behind the current one, so when a process reaches its budget the
+# waiting run takes over with no gap.
+#
+# Two things worth stating rather than discovering: scheduled workflows are
+# disabled automatically after 60 days without repository activity, and the
+# signing seed lives in GitHub's secret store, which means GitHub and anyone
+# with write access here can publish prices as all five sources. On a testnet
+# whose faucet pays 0.5 WBT a day that is an acceptable trade; with value behind
+# the oracle it would not be, and the seed must never be one that has held
+# mainnet funds.
 
 name: Keeper
 
@@ -24,22 +28,25 @@ permissions: {}
 
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    # Hourly at :13. Not on the hour: the top of the hour is when every cron on
+    # the platform fires at once, and that is exactly when schedules get dropped.
+    - cron: "13 * * * *"
   workflow_dispatch:
 
-# One relayer account means one nonce. Two overlapping runs would race for it
-# and one would be rejected, so runs queue instead of overlapping.
+# One relayer account means one nonce, so runs must not overlap. `false` queues
+# the next run behind the current one instead of killing a process mid-submit.
 concurrency:
   group: cotejo-keeper
   cancel-in-progress: false
 
 jobs:
   attest:
-    name: Publish one round of attestations
+    name: Publish attestations
     runs-on: ubuntu-latest
-    # A cycle takes well under a minute. This cap exists so that a run hung on
-    # an unresponsive RPC cannot sit in the concurrency group blocking the next.
-    timeout-minutes: 8
+    # GitHub kills a job at 6 hours. The process stops itself at 5h45m, so this
+    # is only a backstop; a job killed by timeout is recorded as a failure and
+    # would pollute the uptime history it exists to produce.
+    timeout-minutes: 350
     permissions:
       contents: read
     steps:
@@ -57,9 +64,10 @@ jobs:
         working-directory: keeper
         run: npm ci
 
-      - name: Submit
+      - name: Run the heartbeat
         working-directory: keeper
         env:
           COTEJO_KEEPER_MNEMONIC: ${{ secrets.COTEJO_KEEPER_MNEMONIC }}
           COTEJO_RELAYER_INDEX: ${{ vars.COTEJO_RELAYER_INDEX || '100' }}
-        run: npm run once
+          COTEJO_RUN_SECONDS: "20700"
+        run: npm start

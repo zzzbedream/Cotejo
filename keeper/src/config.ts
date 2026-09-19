@@ -119,3 +119,15 @@ export const relayerIndex = Number(process.env.COTEJO_RELAYER_INDEX ?? 100);
 export const heartbeatSeconds = Number(
   process.env.COTEJO_HEARTBEAT_SECONDS ?? 900,
 );
+
+/**
+ * Wall-clock budget for one process, in seconds. 0 means run forever.
+ *
+ * Exists because GitHub's scheduler cannot be relied on to fire a cron: with
+ * a ten-minute cron configured, it fired once in 4h48m, leaving the last
+ * observation 2h44m stale against a 1800 s tolerance. The fix is to stop asking
+ * it for a heartbeat and ask it only for a restart - one long-lived process
+ * drives the cadence itself, and the schedule merely has to land once inside
+ * that window rather than every ten minutes.
+ */
+export const runSeconds = Number(process.env.COTEJO_RUN_SECONDS ?? 0);

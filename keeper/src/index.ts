@@ -1,5 +1,5 @@
 import { formatEther } from "viem";
-import { heartbeatSeconds, loadDeployment } from "./config.js";
+import { heartbeatSeconds, loadDeployment, runSeconds } from "./config.js";
 import {
   assertChain,
   publicClient,
@@ -65,10 +65,12 @@ async function main(): Promise<void> {
   await printAddresses();
   if (addressesOnly) return;
 
-  log(
-    `heartbeat ${heartbeatSeconds}s over ${sources.length} sources ` +
-      `(${once ? "single cycle" : "looping"})`,
-  );
+  const budget = once ? "single cycle" : runSeconds > 0 ? `${runSeconds}s budget` : "looping";
+  log(`heartbeat ${heartbeatSeconds}s over ${sources.length} sources (${budget})`);
+
+  const startedAt = Date.now();
+  let cycles = 0;
+  let published = 0;
 
   for (;;) {
     let sent = 0;
@@ -81,7 +83,9 @@ async function main(): Promise<void> {
       // number is a lie the whole system is built to prevent.
       log(`cycle failed, skipping: ${err instanceof Error ? err.message : err}`);
     }
-    if (sent === 0) log("nothing landed this cycle");
+    cycles++;
+    if (sent > 0) published++;
+    else log("nothing landed this cycle");
 
     if (once) {
       // A scheduled runner reports success by exit status, and a green run that
@@ -90,6 +94,18 @@ async function main(): Promise<void> {
       // exits non-zero and shows up red in the run history.
       if (sent === 0) process.exit(1);
       return;
+    }
+    // Stop while there is still time for a whole heartbeat, so the process
+    // ends on its own terms rather than being killed mid-submit by the job
+    // timeout - a run cancelled that way is recorded as a failure and would
+    // pollute the very uptime history it exists to produce.
+    if (runSeconds > 0) {
+      const elapsed = (Date.now() - startedAt) / 1000;
+      if (runSeconds - elapsed <= heartbeatSeconds) {
+        log(`published ${published}/${cycles} cycles in ${Math.round(elapsed)}s; budget spent`);
+        if (published === 0) process.exit(1);
+        return;
+      }
     }
     await new Promise((r) => setTimeout(r, heartbeatSeconds * 1000));
   }
