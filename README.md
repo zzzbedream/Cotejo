@@ -1,391 +1,430 @@
 # Cotejo
 
-Oráculo agregador de precios para **Whitechain Sepolia** (OP Stack L2, chain ID `1874`, gas token WBT).
+A price oracle for **Whitechain Sepolia** (OP Stack L2, chain id `1874`, gas token WBT), and an
+isolated lending market built on top of it.
 
-Cotejo es seguro porque se niega a responder, no porque responda bien. Ante cualquier duda
-revierte con un error tipado. Un consumidor que revierte es un consumidor vivo.
+Cotejo is safe because it refuses to answer, not because it answers well. Given any doubt it
+reverts with a typed error. A consumer that reverts is a consumer that is still alive.
 
-Expone `AggregatorV3Interface` con la firma exacta de Chainlink, de modo que cualquier
-protocolo ya integrado puede apuntar a Cotejo sin cambiar una línea.
-
-> El NatSpec de los contratos está en inglés, por convención de Solidity. Este README está en
-> español; dilo y lo traduzco.
+It exposes `AggregatorV3Interface` with Chainlink's exact signature, so a protocol already
+integrated against Chainlink can point at Cotejo without changing a line.
 
 ---
 
-## Por qué existe
+## What is live, and what it currently refuses to do
 
-Whitechain no tiene ningún oráculo desplegado. Verificado contra la documentación oficial:
-el índice (`llms.txt`) no contiene ninguna página de oráculos, y las seis apariciones de
-"oracle" en la documentación completa son infraestructura de OP Stack, no feeds de precio:
+Phase 1 has been on chain since **18 September 2026**. Eight contracts, deployed and verified on
+Blockscout:
 
-| Aparición | Qué es |
+| Contract | Address |
 |---|---|
-| `GasPriceOracle` (`0x420…000F`) | Predeploy de tarifa de datos L1 |
-| `l2OutputOracle` | Mencionado explícitamente como **no aplicable** (Whitechain usa fault proofs) |
-| `preimageOracleChallengePeriod` | Parámetro de dispute game |
-| "no gas-oracle action" | Nota sobre la API Etherscan-compatible |
+| `PriceRouter` | [`0xB4f9C215…0Fd096`](https://explorer.testnet.whitechain.io/address/0xB4f9C2151B73eDEa730A72e9642C971d803Fd096) |
+| `RouteGovernor` | [`0x116a41d0…55341D`](https://explorer.testnet.whitechain.io/address/0x116a41d02bF43f7c15D9DB8EC3e0fDccAE55341D) |
+| `AttestationSource` x5 | `cotejo-keeper-1..5`, one per operator group |
+| `CotejoAggregatorAdapter` WBT/USD | [`0xc7624150…faE16`](https://explorer.testnet.whitechain.io/address/0xc7624150c28bF26cdF920A0715a7c0ba614faE16) |
 
-No hay Chainlink, ni Pyth, ni RedStone. Tampoco hay stablecoin nativa (el gas token es WBT) y
-los swaps están documentados como *"not available on any testnet"*. Por tanto **el precio
-tiene que entrar desde fuera, firmado**, y el contrato asume que quien firma puede mentir o
-estar comprometido.
+Five sources publish real WBT/USD prices derived from the WhiteBIT order book, relayed from
+GitHub Actions rather than from anybody's laptop.
 
-### Parámetros de red verificados
+**And `latestRoundData()` reverts.** `Cotejo__RouteNotConfigured`: the contracts exist and the
+data is arriving, but no route is installed yet, because installing one takes a 48-hour
+timelock that has not elapsed. An oracle that returned a number in this state would be the
+problem, not the progress.
 
-Contra `/learn/network/reference`:
+**The lending market is written, tested, and deliberately not deployed.** Its admission rules
+are checked at `createMarket` and none is relaxable by governance: R1 requires the adapter to
+point at routes with `minSources >= 3`, R2 requires those routes to carry at least three
+distinct operator groups, R7 requires `sources.length >= minSources + 2`, and R8 freezes the
+route policy at deployment so governance can tighten it but never loosen it. Every one of them
+reads a **live route**, and no route is installed yet. The market cannot be deployed until the
+oracle it depends on is actually serving — which is the ordering the rules exist to enforce.
 
-| Parámetro | Valor |
+Once the route executes, the five deployed sources satisfy R1, R2 and R7 on their face. They
+will not satisfy them in substance, for the reason immediately below.
+
+## What the live deployment does not prove
+
+The five sources currently publish **identical prices, bit for bit. Deviation: 0.00 bps against
+a 200 bps tolerance.**
+
+That is arithmetic, not luck. One process reads one order book and signs five times with five
+keys derived from one seed. INV-5 (one source per operator group) and R2 (three distinct
+groups) are enforced by the contracts and satisfied *nominally*, not *actually*: five addresses
+belonging to one operator are one operator.
+
+So **INV-2, the deviation check, will never fire here** — five signatures over one number cannot
+disagree. The invariant is not broken; it is idle, and it stays idle until the five prices come
+from five places.
+
+A healthy dashboard today therefore demonstrates aggregation, staleness, quorum and operator
+concentration running against real data. It demonstrates nothing about deviation, which is the
+check people assume demonstrates everything. The figure is on chain, so this can be confirmed
+rather than taken on trust.
+
+None of it is concealed: the on-chain operator groups are named `cotejo-keeper-1` …
+`cotejo-keeper-5`, claiming no venue and implying no relationship with anyone. Replacing this
+with genuinely independent operators is the work; this is the placeholder that lets everything
+else be tested. [`keeper/README.md`](keeper/README.md) makes the same argument at greater
+length, and calls itself a keeper rather than a reporter fleet.
+
+---
+
+## Why it exists
+
+Whitechain has no price oracle deployed. Verified against the official documentation index
+(`llms.txt`), which contains no oracle page, and against the six occurrences of "oracle" in the
+full documentation, every one of which is OP Stack infrastructure rather than a price feed:
+
+| Occurrence | What it is |
 |---|---|
-| Chain ID | `1874` (hex `0x752`), **Live** |
+| `GasPriceOracle` (`0x420…000F`) | L1 data-fee predeploy |
+| `l2OutputOracle` | Explicitly marked **not applicable** (Whitechain uses fault proofs) |
+| `preimageOracleChallengePeriod` | Dispute-game parameter |
+| "no gas-oracle action" | Note on the Etherscan-compatible API |
+
+There is no Chainlink, no Pyth, no RedStone. There is also no native stablecoin — the gas token
+is WBT — and swaps are documented as *"not available on any testnet"*. So **the price has to
+come from outside, signed**, and the contracts assume whoever signs may lie or be compromised.
+
+### Verified network parameters
+
+Against `/learn/network/reference`:
+
+| Parameter | Value |
+|---|---|
+| Chain id | `1874` (hex `0x752`), **Live** |
 | L1 settlement | Ethereum Sepolia (`11155111`) |
 | Block time | **1 s** |
 | Min base fee | 5 gwei |
-| Gas token | WBT, 18 decimales |
+| Gas token | WBT, 18 decimals |
 | RPC | `https://rpc.testnet.whitechain.io` |
 | Explorer | `https://explorer.testnet.whitechain.io` |
 
-Mainnet aún no está viva; su chain ID se publica antes del lanzamiento.
+Mainnet is not live yet; its chain id is published before launch.
+
+One trap worth naming: `viem/chains` exports both `whitechainSepolia` (1874) and
+`whitechainTestnet` (2625), and they are different networks. Every signing path here asserts
+the chain id against the RPC before it signs, because picking the wrong one is one autocomplete
+away.
 
 ---
 
-## Flujo del precio
+## How a price flows
 
 ```
-  Reporters off-chain (claves registradas, un operatorGroup por fuente)
-        │
-        │  PriceAttestation{asset, price, decimals, observedAt, depthUsd, sourceId}
-        │  firmada EIP-712  ──  submit() es permissionless: firma la autoriza, no el caller
-        ▼
-  ┌─────────────────────────────────────────────────────────────────────┐
-  │ AttestationSource            ChainlinkCompatSource      TwapSource  │
-  │ · rechaza observedAt futuro  · envuelve un feed          · v1: SIEMPRE│
-  │ · rechaza repetidas          · exige answer > 0            REVIERTE  │
-  │ · exige avance estricto      · exige answeredInRound     · supportsAsset
-  │   en observedAt                >= roundId                  == false  │
-  │ · exige depthUsd mínimo                                             │
-  └─────────────────────────────────────────────────────────────────────┘
-        │  IPriceSource.latestPrice(asset) → (price, decimals, observedAt, group)
-        │  TODO view (D3). Cap de 200k gas por fuente.
-        ▼
-  ┌─────────────────────────────────────────────────────────────────────┐
-  │ PriceRouter.latestPrice(asset)                                      │
-  │                                                                     │
-  │   0. ¿pausado?              ──► Cotejo__Paused              (INV-6) │
-  │   1. lee cada fuente                                                │
-  │        · revierte           ──► se descarta, no es fatal            │
-  │        · observedAt futuro  ──► se descarta                         │
-  │        · precio 0           ──► se descarta                         │
-  │        · STALE              ──► Cotejo__StalePrice          (INV-3) │
-  │        · ok                 ──► normaliza a 18 decimales            │
-  │   2. |fresh| < minSources   ──► Cotejo__InsufficientSources (INV-1) │
-  │   3. concentración operador ──► Cotejo__OperatorConcentration(INV-5)│
-  │   4. insertion sort (n<=15, D4)                                     │
-  │   5. (max-min)*1e4/mediana  ──► Cotejo__DeviationExceeded   (INV-2) │
-  │   6. devuelve (mediana, 18, observedAt MÁS ANTIGUO del conjunto)    │
-  └─────────────────────────────────────────────────────────────────────┘
-        │
-        ▼
-  ┌─────────────────────────────────────────────────────────────────────┐
-  │ CotejoAggregatorAdapter  ·  AggregatorV3Interface exacta             │
-  │   latestRoundData() → reescala a los decimales del consumidor       │
-  │                       roundId derivado de observedAt (monótono)     │
-  │                       revierte si redondearía a 0 o excede int256   │
-  │   getRoundData()    → SIEMPRE revierte: no hay histórico que fingir │
-  └─────────────────────────────────────────────────────────────────────┘
-        │
-        ▼
-   Protocolo consumidor (sin cambios de código)
+  Off-chain reporters (registered keys, one operatorGroup per source)
+        |
+        |  PriceAttestation{asset, price, decimals, observedAt, depthUsd, sourceId}
+        |  EIP-712 signed  --  submit() is permissionless: the signature
+        |                      authorises the write, the caller does not
+        v
+  +---------------------------------------------------------------------+
+  | AttestationSource           ChainlinkCompatSource      TwapSource    |
+  | - rejects future observedAt - wraps a feed             - v1: ALWAYS  |
+  | - rejects replays           - requires answer > 0        REVERTS     |
+  | - requires strict advance   - requires answeredInRound - supportsAsset
+  |   of observedAt               >= roundId                 == false    |
+  | - requires minimum depthUsd                                          |
+  +---------------------------------------------------------------------+
+        |  IPriceSource.latestPrice(asset) -> (price, decimals, observedAt, group)
+        |  All view (D3). 200k gas cap per source.
+        v
+  +---------------------------------------------------------------------+
+  | PriceRouter.latestPrice(asset)                                       |
+  |                                                                      |
+  |   0. paused?                --> Cotejo__Paused               (INV-6) |
+  |   1. read every source                                               |
+  |        - reverts            --> dropped, not fatal                   |
+  |        - observedAt future  --> dropped                              |
+  |        - price 0            --> dropped                              |
+  |        - STALE              --> Cotejo__StalePrice           (INV-3) |
+  |        - ok                 --> normalise to 18 decimals             |
+  |   2. |fresh| < minSources   --> Cotejo__InsufficientSources  (INV-1) |
+  |   3. operator concentration --> Cotejo__OperatorConcentration(INV-5) |
+  |   4. insertion sort (n <= 15, D4)                                    |
+  |   5. (max-min)*1e4/median   --> Cotejo__DeviationExceeded     (INV-2)|
+  |   6. return (median, 18, OLDEST observedAt in the set)               |
+  +---------------------------------------------------------------------+
+        |
+        v
+  +---------------------------------------------------------------------+
+  | CotejoAggregatorAdapter  ·  exact AggregatorV3Interface              |
+  |   latestRoundData() -> rescales to the consumer's decimals           |
+  |                        roundId derived from observedAt (monotonic)   |
+  |                        reverts if it would round to 0 or exceed int256
+  |   getRoundData()    -> ALWAYS reverts: there is no history to fake   |
+  +---------------------------------------------------------------------+
+        |
+        v
+   Consuming protocol (no code changes)
 
 
-  Camino administrativo — nunca toca un precio (INV-7)
+  Administrative path - never touches a price (INV-7)
 
-   RouteGovernor ──48 h──► PriceRouter.commitRoute()      (INV-4)
-   RouteGovernor ──48 h──► PriceRouter.unpause()          (INV-6)
-   Guardián      ──ya───► PriceRouter.pause()             (INV-6)
+   RouteGovernor --48 h--> PriceRouter.commitRoute()      (INV-4)
+   RouteGovernor --48 h--> PriceRouter.unpause()          (INV-6)
+   Guardian      --now---> PriceRouter.pause()            (INV-6)
 ```
+
+The asymmetry in step 1 is deliberate and is the decision most often questioned: **a source
+that reverts is dropped, but a source that answers with stale data reverts the whole read.** A
+missing source is a missing source, and `minSources` decides whether enough remain. A source
+that answers with old data is evidence that something upstream is broken, and reading past that
+is how an oracle serves a number nobody should act on.
 
 ---
 
-## Las siete invariantes
+## The seven invariants
 
-| ID | Invariante | Test que la prueba |
+| ID | Invariant | Tests that prove it |
 |---|---|---|
-| **INV-1** | `latestPrice` revierte si las fuentes frescas son menos que `minSources` | `test_INV1_revertsBelowMinSources`<br>`test_INV1_passesAtExactlyMinSources`<br>`test_INV1_revertingSourceIsDroppedNotFatal`<br>`test_INV1_gasBombSourceIsContainedAndDropped` |
-| **INV-2** | Revierte si la desviación del conjunto fresco supera `maxDeviationBps` | `test_INV2_revertsWhenDeviationExceeded`<br>`test_INV2_deviationIsMeasuredAgainstMedianNotMin`<br>`test_INV2_passesAtExactlyMaxDeviation` |
-| **INV-3** | Revierte si `block.timestamp − observedAt > maxStalenessSeconds` para **cualquier** fuente del conjunto | `test_INV3_revertsOnStaleSource`<br>`test_INV3_oneStaleSourceRevertsEvenWithQuorumOfFreshOnes`<br>`test_INV3_passesAtExactlyMaxStaleness`<br>`test_INV3_reportsOldestObservationInTheSet` |
-| **INV-4** | Un cambio de ruta surte efecto solo tras `ROUTE_TIMELOCK = 48 h`, y la ruta pendiente es legible públicamente durante toda la espera | `test_INV4_routeChangeRequiresFullTimelock`<br>`test_INV4_pendingRouteIsPubliclyReadableForTheWholeWait`<br>`test_INV4_routeIsUnchangedWhileProposalIsPending` |
-| **INV-5** | Independencia de operador: nunca más de `maxSourcesPerOperatorGroup` (default 1) por grupo, validado **al proponer Y al leer** | `test_INV5_rejectsTwoSourcesFromSameOperator`<br>`test_INV5_revertsAtReadWhenGroupChangesAfterCommit`<br>`test_INV5_honoursMaxSourcesPerOperatorGroupAboveOne`<br>`test_CircularPricing` |
-| **INV-6** | La pausa es unidireccional hacia la seguridad: pausar es inmediato y de guardián; despausar pasa por el timelock completo | `test_INV6_guardianPausesImmediately`<br>`test_INV6_unpauseRequiresFullTimelock`<br>`test_INV6_guardianCannotUnpause`<br>`test_INV6_nonGuardianCannotPause`<br>`test_INV6_pauseSurvivesRepeatedGuardianCalls` |
-| **INV-7** | Ningún rol administrativo puede escribir un precio. No existe esa función | `test_INV7_routerExposesNoPriceWritingFunction`<br>`test_INV7_governorCannotMovePriceWithoutSources` |
+| **INV-1** | `latestPrice` reverts when fresh sources are fewer than `minSources` | `test_INV1_revertsBelowMinSources`<br>`test_INV1_passesAtExactlyMinSources`<br>`test_INV1_revertingSourceIsDroppedNotFatal`<br>`test_INV1_gasBombSourceIsContainedAndDropped` |
+| **INV-2** | Reverts when the fresh set's deviation exceeds `maxDeviationBps` | `test_INV2_revertsWhenDeviationExceeded`<br>`test_INV2_deviationIsMeasuredAgainstMedianNotMin`<br>`test_INV2_passesAtExactlyMaxDeviation` |
+| **INV-3** | Reverts when `block.timestamp − observedAt > maxStalenessSeconds` for **any** source in the set | `test_INV3_revertsOnStaleSource`<br>`test_INV3_oneStaleSourceRevertsEvenWithQuorumOfFreshOnes`<br>`test_INV3_passesAtExactlyMaxStaleness`<br>`test_INV3_reportsOldestObservationInTheSet` |
+| **INV-4** | A route change takes effect only after `ROUTE_TIMELOCK = 48 h`, and the pending route is publicly readable for the whole wait | `test_INV4_routeChangeRequiresFullTimelock`<br>`test_INV4_pendingRouteIsPubliclyReadableForTheWholeWait`<br>`test_INV4_routeIsUnchangedWhileProposalIsPending` |
+| **INV-5** | Operator independence: never more than `maxSourcesPerOperatorGroup` (default 1) per group, validated **at proposal AND at read** | `test_INV5_rejectsTwoSourcesFromSameOperator`<br>`test_INV5_revertsAtReadWhenGroupChangesAfterCommit`<br>`test_INV5_honoursMaxSourcesPerOperatorGroupAboveOne`<br>`test_CircularPricing` |
+| **INV-6** | Pausing is one-way toward safety: pausing is immediate and guardian-held; unpausing takes the full timelock | `test_INV6_guardianPausesImmediately`<br>`test_INV6_unpauseRequiresFullTimelock`<br>`test_INV6_guardianCannotUnpause`<br>`test_INV6_nonGuardianCannotPause`<br>`test_INV6_pauseSurvivesRepeatedGuardianCalls` |
+| **INV-7** | No administrative role can write a price. No such function exists | `test_INV7_routerExposesNoPriceWritingFunction`<br>`test_INV7_governorCannotMovePriceWithoutSources` |
 
-`test_INV7_routerExposesNoPriceWritingFunction` escanea el bytecode desplegado buscando nueve
-selectores de escritura de precio. Es estructural a propósito: falla si alguien añade un
-setter en el futuro, se llame como se llame.
+`test_INV7_routerExposesNoPriceWritingFunction` scans the deployed bytecode for nine
+price-writing selectors. It is structural on purpose: it fails if somebody adds a setter later,
+whatever they call it.
 
-### Escenarios
+### Scenario tests
 
-| Test | Qué reproduce |
+| Test | What it reproduces |
 |---|---|
-| `test_TectonicScenario` | Una fuente ×100 en 20 min mientras dos permanecen estables. El router deja de responder durante la rampa; al final da exactamente `Cotejo__DeviationExceeded(990_000 bps, 500)` |
-| `test_TectonicScenario_downwardRunawayIsAlsoRefused` | El caso espejo a la baja, que es el que dispara liquidaciones |
-| `test_CircularPricing` | Tres fuentes con el mismo `operatorGroup`. Revierte **al proponer**, nunca entra en la cola |
-| `test_TwapDisabled_cannotBeCommittedIntoARoute` | `TwapSource` no puede activarse por configuración, solo escribiendo la implementación |
+| `test_TectonicScenario` | One source going 100x over 20 minutes while two stay flat. The router stops answering during the ramp and ends at exactly `Cotejo__DeviationExceeded(990_000 bps, 500)` |
+| `test_TectonicScenario_downwardRunawayIsAlsoRefused` | The mirror case downward, which is the one that triggers liquidations |
+| `test_CircularPricing` | Three sources sharing an `operatorGroup`. Reverts **at proposal**; it never enters the queue |
+| `test_TwapDisabled_cannotBeCommittedIntoARoute` | `TwapSource` cannot be enabled by configuration, only by writing the implementation |
+
+This is a direct answer to Tectonic (30 August 2026, $75M): a single feed ran away and the
+protocol kept quoting it. [`test/market/TectonicReplay.t.sol`](test/market/TectonicReplay.t.sol)
+replays it against this code.
 
 ---
 
-## Decisiones de diseño
+## Design decisions
 
-### D1 — La desviación se mide contra la mediana
+### D1 — Deviation is measured against the median
 
 ```
-(max − min) × 10 000 / mediana  ≤  maxDeviationBps
+(max − min) × 10 000 / median  <=  maxDeviationBps
 ```
 
-**Esto no es simétrico.** Para el mismo spread absoluto, la cifra depende de qué lado esté la
-mayoría:
+**This is not symmetric.** For the same absolute spread, the figure depends on which side the
+majority sits:
 
-| Conjunto | Mediana | Spread | Desviación |
+| Set | Median | Spread | Deviation |
 |---|---|---|---|
-| `[100, 100, 200]` — mayoría baja, outlier **alto** | 100 | 100 | **10 000 bps** |
-| `[100, 200, 200]` — mayoría alta, outlier **bajo** | 200 | 100 | **5 000 bps** |
+| `[100, 100, 200]` — low majority, **high** outlier | 100 | 100 | **10 000 bps** |
+| `[100, 200, 200]` — high majority, **low** outlier | 200 | 100 | **5 000 bps** |
 
-Un outlier a la baja bajo una mayoría cara se juzga con la mitad de severidad, porque divide
-por una mediana mayor. Esa es la dirección que dispara liquidaciones, así que
-`maxDeviationBps` **protege de forma asimétrica** y una ruta debe calibrarse pensando en el
-caso descendente. Fijado como propiedad en `testFuzz_deviationBps_medianBaseIsAsymmetric`.
+A downward outlier under an expensive majority is judged half as harshly, because it divides by
+a larger median. That is the direction which triggers liquidations, so `maxDeviationBps`
+**protects asymmetrically**, and a route should be calibrated with the downward case in mind.
+Pinned as a property in `testFuzz_deviationBps_medianBaseIsAsymmetric`.
 
-`(max − min) × 10 000` desborda por encima de ~1.15e73 y revierte. Es intencionado: un número
-así no es un precio, y fallar cerrado es la respuesta correcta.
+`(max − min) × 10 000` overflows above roughly 1.15e73 and reverts. That is intended: a number
+like that is not a price, and failing closed is the correct answer.
 
-### D2 — `maxStalenessSeconds ≥ 2 × reporterHeartbeatSeconds`
+### D2 — `maxStalenessSeconds >= 2 × reporterHeartbeatSeconds`
 
-Validado al configurar la ruta. El despliegue usa heartbeat de 900 s y staleness de 1800 s: el
-mínimo exacto que D2 permite. Eso es precisamente lo que la regla del doble compra — la
-comprobación es `edad > maxStaleness`, estricta, así que la ventana **tolera un latido perdido
-entero y falla al segundo consecutivo**. El heartbeat lo fija el presupuesto del faucet (ver
-`DEPLOYMENT.md` §2), no la preferencia; la ventana de frescura es un parámetro de seguridad y no
-se ensancha para acomodar un keeper poco fiable. Por debajo del doble, la operación normal dispara reverts aleatorios y nadie
-entiende por qué. `reporterHeartbeatSeconds` vive en la `Route`, no en la fuente: leerlo de la
-fuente dejaría que una fuente mentirosa declarase un heartbeat diminuto para pasar el check.
+Validated when the route is configured. The deployment uses a 900 s heartbeat and 1800 s
+staleness: exactly the minimum D2 permits. That is precisely what the doubling buys — the check
+is `age > maxStaleness`, strict, so the window **tolerates one entire missed beat and fails on
+the second consecutive one**. The heartbeat is set by the faucet budget (see `DEPLOYMENT.md`
+§2), not by preference; the freshness window is a safety parameter and is not widened to
+accommodate an unreliable keeper. Below the doubling, normal operation produces random reverts
+and nobody understands why.
 
-### D3 — Todo el camino de lectura es `view`
+`reporterHeartbeatSeconds` lives on the `Route`, not on the source. Reading it from the source
+would let a lying source declare a tiny heartbeat to pass the check.
 
-Fuente → router → adaptador, sin excepción, para que `latestRoundData()` sea `view`, que es
-como lo llaman todos los consumidores. Una fuente que necesite escribir estado para responder
-no puede ser una fuente. Para un modelo pull estilo RedStone, la extracción desde `msg.data`
-funciona en contexto `view`; está documentado en `IPriceSource`.
+### D3 — The entire read path is `view`
 
-### D4 — `MAX_SOURCES_PER_ROUTE = 15`, insertion sort en memoria
+Source → router → adapter, without exception, so that `latestRoundData()` is `view`, which is
+how every consumer calls it. A source that needs to write state in order to answer cannot be a
+source. For a RedStone-style pull model, extraction from `msg.data` works in a `view` context;
+that is documented in `IPriceSource`.
 
-O(n²) a propósito: con n ≤ 15 gana a cualquier alternativa en gas y es auditable de un
-vistazo. Acota el coste de la lectura, que es lo que importa cuando un liquidador llama bajo
-presión.
+### D4 — `MAX_SOURCES_PER_ROUTE = 15`, in-memory insertion sort
 
-### Otras cinco, cerradas en revisión
+O(n²) on purpose: at n <= 15 it beats every alternative on gas and is auditable at a glance. It
+bounds the cost of the read, which is what matters when a liquidator calls under pressure.
 
-| Decisión | Resolución |
+### Five more, closed in review
+
+| Decision | Resolution |
 |---|---|
-| Fuente que revierte | Se descarta y cuenta como no fresca; `minSources` decide. Cap de 200 000 gas por fuente contra griefing 63/64 |
-| Mediana con N par | Promedio de los dos centrales, redondeo abajo, calculado como `lo + (hi−lo)/2` para no desbordar |
-| `observedAt` devuelto | El **más antiguo** del conjunto, no el más nuevo: el consumidor mide contra el eslabón más débil |
-| `getRoundData` | Revierte con `Cotejo__HistoricalDataUnavailable`. No hay rondas; inventar una violaría fail-closed |
-| Precisión en el adaptador | Revierte si el reescalado redondearía a cero, en vez de devolver 0 |
-
-Nota: **una fuente que revierte se descarta, pero una fuente que responde con dato viejo
-revierte toda la lectura.** No es una contradicción. Una fuente ausente es una fuente ausente;
-una fuente que contesta con datos rancios es señal de que algo va mal aguas arriba.
+| A source that reverts | Dropped and counted as not fresh; `minSources` decides. 200,000 gas cap per source against 63/64 griefing |
+| Median with even N | Average of the two middle values, rounded down, computed as `lo + (hi−lo)/2` so it cannot overflow |
+| Returned `observedAt` | The **oldest** in the set, not the newest: the consumer measures against the weakest link |
+| `getRoundData` | Reverts with `Cotejo__HistoricalDataUnavailable`. There are no rounds, and inventing one would violate fail-closed |
+| Adapter precision | Reverts if rescaling would round to zero, instead of returning 0 |
 
 ---
 
-## Dependencias
+## Dependencies
 
-**OpenZeppelin 5.1.0**, no solmate. Razones, por orden:
+**OpenZeppelin 5.1.0**, not solmate. In order:
 
-1. `ECDSA` rechaza maleabilidad (`s > n/2`); solmate no cubre ese caso igual.
-2. `EIP712` cachea el domain separator con protección ante fork, relevante en una L2 cuyo
-   chain ID de mainnet aún no existe.
-3. `Ownable2Step` evita perder el control por un typo en una transferencia.
-4. La propia documentación de Whitechain demuestra OpenZeppelin verificable en este Blockscout
-   (su despliegue de referencia usa `@openzeppelin/contracts@5.6.1`).
+1. `ECDSA` rejects malleability (`s > n/2`); solmate does not cover that case the same way.
+2. `EIP712` caches the domain separator with fork protection, which matters on an L2 whose
+   mainnet chain id does not exist yet.
+3. `Ownable2Step` avoids losing control to a typo in a transfer.
+4. Whitechain's own documentation demonstrates OpenZeppelin verifying on this Blockscout (its
+   reference deployment uses `@openzeppelin/contracts@5.6.1`).
 
-**Por qué 5.1.0 y no 5.6.1:** OZ 5.6.1 usa `mcopy` en `Bytes.sol`, que `Math.sol` importa, y
-`mcopy` es un opcode de Cancun. Con `evm_version = "shanghai"` el build falla. 5.1.0 es la
-última que no lo usa, así que conserva el target shanghai sin renunciar a una OZ moderna.
+**Why 5.1.0 and not 5.6.1:** OZ 5.6.1 uses `mcopy` in `Bytes.sol`, which `Math.sol` imports, and
+`mcopy` is a Cancun opcode. With `evm_version = "shanghai"` the build fails. 5.1.0 is the last
+release that does not use it, so it keeps the shanghai target without giving up a modern OZ.
 
-### Sobre `evm_version = "shanghai"`
+### On `evm_version = "shanghai"`
 
-La cadena **sí soporta Cancun**: Holocene está activo desde génesis y el despliegue de
-referencia de la documentación verifica con EVM `cancun` y solc 0.8.28. Mantenemos `shanghai`
-porque Cotejo no usa transient storage, el bytecode shanghai corre sin cambios en una cadena
-cancun, y el target más antiguo mantiene los artefactos portables a cualquier cadena OP Stack
-que aún no haya activado Ecotone. Es una elección, no un límite.
+The chain **does** support Cancun: Holocene has been active since genesis, and the
+documentation's reference deployment verifies with EVM `cancun` and solc 0.8.28. Shanghai is
+kept because Cotejo uses no transient storage, shanghai bytecode runs unchanged on a cancun
+chain, and the older target keeps the artifacts portable to any OP Stack chain that has not yet
+activated Ecotone. It is a choice, not a limit.
 
-`v0.8.24+commit.e11b9ed9` está confirmado en la lista de compiladores del explorer
-(`GET /api/v2/smart-contracts/verification/config`), así que el contrato es verificable.
+`v0.8.24+commit.e11b9ed9` is confirmed present in the explorer's compiler list
+(`GET /api/v2/smart-contracts/verification/config`), so the contracts are verifiable.
 
 ---
 
-## Cobertura
+## Coverage
 
-269 tests en 24 suites. `forge coverage --no-match-coverage "(test/|script/)"`, ambas capas:
+269 tests across 24 suites. `forge coverage --no-match-coverage "(test/|script/)"`, both layers:
 
 ```
-╭------------------------------------------+-------------------+--------------------+------------------+------------------╮
 | File                                     | % Lines           | % Statements       | % Branches       | % Funcs          |
-+=========================================================================================================================+
+|------------------------------------------|-------------------|--------------------|------------------|------------------|
 | src/PriceRouter.sol                      | 100.00% (148/148) | 99.44% (177/178)   | 97.44% (38/39)   | 100.00% (19/19)  |
-|------------------------------------------+-------------------+--------------------+------------------+------------------|
 | src/RouteGovernor.sol                    | 100.00% (79/79)   | 100.00% (78/78)    | 100.00% (14/14)  | 100.00% (17/17)  |
-|------------------------------------------+-------------------+--------------------+------------------+------------------|
 | src/adapters/CotejoAggregatorAdapter.sol | 100.00% (25/25)   | 100.00% (23/23)    | 100.00% (3/3)    | 100.00% (6/6)    |
-|------------------------------------------+-------------------+--------------------+------------------+------------------|
 | src/libraries/AggregationLib.sol         | 100.00% (35/35)   | 100.00% (50/50)    | 100.00% (8/8)    | 100.00% (4/4)    |
-|------------------------------------------+-------------------+--------------------+------------------+------------------|
 | src/market/AdaptiveCurveIrm.sol          | 92.50% (37/40)    | 94.12% (48/51)     | 100.00% (11/11)  | 83.33% (5/6)     |
-|------------------------------------------+-------------------+--------------------+------------------+------------------|
 | src/market/CotejoMarket.sol              | 99.56% (448/450)  | 99.25% (527/531)   | 96.70% (88/91)   | 98.25% (56/57)   |
-|------------------------------------------+-------------------+--------------------+------------------+------------------|
 | src/market/CotejoOracleAdapter.sol       | 98.65% (73/74)    | 96.77% (90/93)     | 90.00% (9/10)    | 100.00% (16/16)  |
-|------------------------------------------+-------------------+--------------------+------------------+------------------|
 | src/market/libraries/MathLib.sol         | 100.00% (19/19)   | 100.00% (23/23)    | 100.00% (0/0)    | 100.00% (8/8)    |
-|------------------------------------------+-------------------+--------------------+------------------+------------------|
 | src/market/libraries/SharesMathLib.sol   | 100.00% (8/8)     | 100.00% (8/8)      | 100.00% (0/0)    | 100.00% (4/4)    |
-|------------------------------------------+-------------------+--------------------+------------------+------------------|
 | src/sources/AttestationSource.sol        | 100.00% (73/73)   | 100.00% (76/76)    | 100.00% (18/18)  | 100.00% (17/17)  |
-|------------------------------------------+-------------------+--------------------+------------------+------------------|
 | src/sources/ChainlinkCompatSource.sol    | 100.00% (30/30)   | 100.00% (35/35)    | 100.00% (7/7)    | 100.00% (7/7)    |
-|------------------------------------------+-------------------+--------------------+------------------+------------------|
 | src/sources/TwapSource.sol               | 72.73% (8/11)     | 66.67% (4/6)       | 100.00% (0/0)    | 80.00% (4/5)     |
-|------------------------------------------+-------------------+--------------------+------------------+------------------|
 | Total                                    | 99.09% (983/992)  | 98.87% (1139/1152) | 97.51% (196/201) | 98.19% (163/166) |
-╰------------------------------------------+-------------------+--------------------+------------------+------------------╯
 ```
 
-**El número es el 97,51 % de ramas.** Se cita la cobertura de ramas y no la de líneas
-(99,09 %) ni la de funciones (98,19 %) porque es la difícil de mover; citar cualquiera de las
-otras a solas sería selectivo.
+**The number is 97.51 % of branches.** Branch coverage is quoted rather than line coverage
+(99.09 %) or function coverage (98.19 %) because branches are the hard ones to move; quoting
+either of the others alone would be selective.
 
-Este README mostró durante un tiempo un 100 % de ramas: era la corrida de solo la capa de
-oráculo, tomada antes de que existiera el mercado. Era cierta sobre lo que medía y falsa sobre
-este repositorio — la cifra real en ese momento era 73,63 %, con `CotejoMarket.sol`, el
-contrato que custodia fondos, en 59,34 %.
+This README displayed 100 % branch coverage for a while. That was the oracle-layer-only run,
+taken before the market existed. It was true about what it measured and false about this
+repository — the real figure at that moment was 73.63 %, with `CotejoMarket.sol`, the contract
+that custodies funds, at 59.34 %.
 
-Las cinco ramas que faltan **no son "todavía no"**: cada una se rastreó hasta su llamador y
-ninguna es alcanzable. Ninguna sostiene nada; las cinco son defensa en profundidad detrás de
-una comprobación que dispara antes. Están enumeradas una por una, con el motivo, en
-[`coverage.txt`](coverage.txt). Una rama inalcanzable documentada dice más que un porcentaje
-que la promedia.
+The five missing branches are **not "not yet"**: each was traced to its caller and none is
+reachable. None holds anything up; all five are defence in depth behind a check that fires
+first. They are listed one by one, with the reason, in [`coverage.txt`](coverage.txt). One
+documented unreachable branch says more than a percentage that averages it away.
 
-El test de invariante de Foundry corre 256 secuencias × 64 llamadas por run sobre seis
-acciones del handler (reportar, reportar con retraso, reportar con otra escala, caídas,
-reasignación de operador, paso del tiempo) y recomputa el resultado esperado directamente
-desde las fuentes, sin pasar por el router, para que la comparación sea independiente.
-
----
-
-## Despliegue y verificación pública
-
-**Fase 1 en cadena desde el 18 de septiembre de 2026**, en Whitechain Sepolia (chain id 1874).
-Ocho contratos desplegados y verificados en Blockscout:
-
-| | |
-|---|---|
-| `PriceRouter` | [`0xB4f9C215…0Fd096`](https://explorer.testnet.whitechain.io/address/0xB4f9C2151B73eDEa730A72e9642C971d803Fd096) |
-| `RouteGovernor` | [`0x116a41d0…5341D`](https://explorer.testnet.whitechain.io/address/0x116a41d02bF43f7c15D9DB8EC3e0fDccAE55341D) |
-| `AttestationSource` × 5 | `cotejo-keeper-1..5`, una por grupo de operador |
-| `CotejoAggregatorAdapter` WBT/USD | [`0xc7624150…faE16`](https://explorer.testnet.whitechain.io/address/0xc7624150c28bF26cdF920A0715a7c0ba614faE16) |
-
-La lista completa, con lo que se comprobó leyendo la cadena en vez del log del despliegue, está
-en [DEPLOYMENT.md §1-bis](DEPLOYMENT.md).
-
-**Hoy el oráculo se niega a dar precio, y eso es lo correcto.** `latestRoundData()` revierte con
-`Cotejo__RouteNotConfigured`: los contratos existen, pero ninguna ruta está instalada todavía.
-Servirá cuando pase el timelock de 48 h. Un oráculo que devolviera algo en este estado sería el
-problema, no el progreso.
-
-**El mercado de préstamo no está desplegado** y es deliberado: sin rutas instaladas no satisface
-sus propias reglas de admisión, y la regla no se debilita para que quepa.
-
-El guion completo de despliegue, los comandos exactos de verificación en Blockscout, el panel de
-verificación y el guion de la prueba en vivo están en [DEPLOYMENT.md](DEPLOYMENT.md).
-
-| Entregable | Dónde |
-|---|---|
-| Scripts de despliegue reanudables | [script/01_Deploy.s.sol](script/01_Deploy.s.sol), [02_Configure](script/02_Configure.s.sol), [03_ExecuteRoutes](script/03_ExecuteRoutes.s.sol) |
-| Direcciones desplegadas | [deployments/1874.json](deployments/1874.json) |
-| Keeper (un proceso, cinco firmas) | [keeper/](keeper/) |
-| Panel de verificación (sin build, sin servidor) | [panel/index.html](panel/index.html) |
-| Prueba adversarial en vivo | [script/LiveTest.s.sol](script/LiveTest.s.sol), ensayada en [LiveDemo.t.sol](test/scenarios/LiveDemo.t.sol) |
+Foundry's invariant suite runs 256 sequences x 64 calls per run over six handler actions
+(report, report late, report at a different scale, outages, operator reassignment, time
+passing) and recomputes the expected result directly from the sources, bypassing the router, so
+the comparison is independent.
 
 ---
 
-## Uso
+## Running it
 
 ```bash
 forge build
 forge test
 forge coverage
+```
 
-# Barrido profundo antes de una auditoría: 10 000 runs de fuzz, 1 024 de invariante
+Deep sweep before an audit — 10,000 fuzz runs, 1,024 invariant runs:
+
+```bash
 FOUNDRY_PROFILE=deep forge test
 ```
 
-### Despliegue en Whitechain Sepolia
+The Foundry toolchain is pinned to **1.7.1** in CI. An unpinned toolchain means a Foundry
+release can turn this repository red without anybody touching it, and `forge fmt` in particular
+changed its line wrapping between 1.7.1 and 1.8.3. 1.7.1 is also the version that built, tested
+and deployed everything in `deployments/` and `broadcast/`, so CI verifies those artifacts with
+the toolchain that produced them.
 
-Los contratos se referencian entre sí, así que el orden importa:
+### Deploying to Whitechain Sepolia
+
+The contracts reference one another, so order matters:
 
 1. `PriceRouter(owner)`
 2. `RouteGovernor(router, owner)`
-3. `router.setGovernor(governor)` — una sola vez; después el owner pierde todo poder sobre routing, pausa y precios
+3. `router.setGovernor(governor)` — once only; afterwards the owner loses all power over
+   routing, pausing and prices
 4. `governor.setGuardian(guardian, true)`
-5. Desplegar las fuentes, una `AttestationSource` por operador
-6. `governor.proposeRoute(asset, route)` → esperar 48 h → `executeRoute(asset)`
+5. Deploy the sources, one `AttestationSource` per operator
+6. `governor.proposeRoute(asset, route)` → wait 48 h → `executeRoute(asset)`
 7. `CotejoAggregatorAdapter(router, asset, decimals, description)`
 
-El despliegue requiere TTY para la contraseña del keystore, así que ejecútalo tú:
+Deployment needs a TTY for the keystore password, so run it yourself rather than from CI:
 
 ```bash
-forge create src/PriceRouter.sol:PriceRouter \
-  --rpc-url https://rpc.testnet.whitechain.io \
-  --account <account-name> \
-  --broadcast \
-  --verify \
-  --verifier blockscout \
-  --verifier-url https://explorer.testnet.whitechain.io/api/ \
-  --constructor-args <owner-address>
+forge create src/PriceRouter.sol:PriceRouter --rpc-url https://rpc.testnet.whitechain.io --account <account-name> --broadcast --verify --verifier blockscout --verifier-url https://explorer.testnet.whitechain.io/api/ --constructor-args <owner-address>
 ```
 
-`--broadcast` es obligatorio: sin él `forge create` solo simula e imprime algo que parece un
-resultado real. `--constructor-args` debe ir **el último**, porque es variádico y se traga
-todos los tokens que le sigan.
+Three things that will cost you an afternoon otherwise:
 
-Para multi-fichero, si `--verify` falla, usa el método `standard-input` de Blockscout.
+- `--broadcast` is mandatory. Without it `forge create` only simulates, and prints something
+  that looks like a real result.
+- `--constructor-args` must come **last**. It is variadic and swallows every token after it.
+- The Blockscout `--verifier-url` must end in **`/api/` with the trailing slash**. Hardhat uses
+  `/api` without it and the two are not interchangeable.
+
+Do not split the command across lines in PowerShell. `\` is not a line continuation there; the
+backslashes become positional arguments and you get `encode length mismatch: expected 0 types,
+got 2`, where "2" is the number of backslashes.
+
+For multi-file verification, if `--verify` fails, use Blockscout's `standard-input` method.
 
 ---
 
-## Lo que Cotejo no hace
+## What Cotejo does not do
 
-- **No implementa TWAP.** `TwapSource` revierte siempre y `supportsAsset` devuelve `false`, así
-  que no puede activarse por configuración. Existe un contrato etiquetado `UniswapV3Pool` en
-  Whitechain Sepolia (`0x6e057133CFa4a9Ec70c77aaFe29751460FE16307`), pero sin factory
-  documentada, sin direcciones de pool publicadas y sin swaps habilitados en testnet, un TWAP
-  sobre él es un número que un atacante fija por el coste de mover un pool fino. Con bloques
-  de 1 s, una ventana de 30 min son 1 800 bloques de una posición barata, no el disuasorio que
-  es en una cadena de 12 s.
-- **No es actualizable.** Contratos inmutables en v1; la migración se hace cambiando la ruta.
-- **No emite ningún token** ni tiene gobernanza tokenizada.
-- **No incluye el servicio off-chain** que firma las atestaciones.
-- **No está optimizado para gas** más allá de lo que exige el cap de 15 fuentes.
-- **No soporta reporters que sean contratos** (EIP-1271). `ECDSA.recover` deriva el firmante de
-  la firma, y el struct `PriceAttestation` acordado no lleva una dirección de reporter que
-  permitiese validar contra un contrato.
+- **No TWAP.** `TwapSource` always reverts and `supportsAsset` returns `false`, so it cannot be
+  enabled by configuration. A contract labelled `UniswapV3Pool` exists on Whitechain Sepolia
+  (`0x6e057133CFa4a9Ec70c77aaFe29751460FE16307`), but with no documented factory, no published
+  pool addresses and no swaps enabled on testnet, a TWAP over it is a number an attacker sets
+  for the cost of moving a thin pool. At 1-second blocks, a 30-minute window is 1,800 blocks of
+  a cheap position, not the deterrent it is on a 12-second chain.
+- **Not upgradeable.** Immutable contracts in v1; migration happens by changing the route.
+- **No token**, and no tokenised governance.
+- **No flash loans**, and no cross-market collateral.
+- **No admin function to change an existing market's LLTV.** Writing one would reintroduce the
+  problem the isolation is there to prevent.
+- **Not gas-optimised** beyond what the 15-source cap requires.
+- **No contract reporters** (EIP-1271). `ECDSA.recover` derives the signer from the signature,
+  and the agreed `PriceAttestation` struct carries no reporter address to validate a contract
+  against.
 
-## Riesgos conocidos
+## Known risks
 
-| Riesgo | Alcance | Mitigación |
+| Risk | Scope | Mitigation |
 |---|---|---|
-| Asimetría de D1 | `maxDeviationBps` es más permisivo con outliers a la baja | Calibrar la ruta pensando en el caso descendente |
-| El owner del router puede quitar todos los guardianes | Pérdida de liveness, no de seguridad: no puede producir un precio ni despausar sin las 48 h | Owner en multisig |
-| El owner de una fuente controla su `operatorGroup` | Podría declarar independencia falsa | INV-5 se revalida en cada lectura y en cada commit |
-| `getRoundData` revierte | Rompe consumidores que recorran histórico | Deliberado; fingir un histórico sería peor |
+| D1 asymmetry | `maxDeviationBps` is more permissive toward downward outliers | Calibrate the route for the downward case |
+| The router owner can remove every guardian | Liveness, not safety: they still cannot produce a price or unpause without the 48 h | Owner on a multisig |
+| A source owner controls its `operatorGroup` | Could declare false independence | INV-5 is revalidated on every read and every commit |
+| `getRoundData` reverts | Breaks consumers that walk history | Deliberate; faking a history would be worse |
+| Depth is self-declared | The `depthUsd` that bounds borrowing is attested by the same parties the system defends against | Unsolved. Stated in full as attack 5 in [`THREAT_MODEL.md`](THREAT_MODEL.md) |
+| The keeper is one process | Five keys, one seed, one host, one venue | Unsolved by design in v1; see the section above and `keeper/README.md` |
+
+[`THREAT_MODEL.md`](THREAT_MODEL.md) section 5 lists ten things this design does **not** cover
+— nine attacks and an explicit out-of-scope list — including one that undermines its own debt
+ceiling. That section is the most useful thing in this repository for anyone deciding whether
+to trust it.
+
+It is currently written in Spanish, which makes it unreadable to most of the people it is aimed
+at. That is a real gap and it is being closed.
