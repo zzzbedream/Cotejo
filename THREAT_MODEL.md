@@ -1,342 +1,346 @@
-# Cotejo Fase 2 · Modelo de amenazas
+# Cotejo Phase 2 · Threat model
 
-Mercado de préstamo aislado sobre el oráculo de la fase 1, en Whitechain.
+An isolated lending market on top of the phase 1 oracle, on Whitechain.
 
-Este documento existe para que un revisor pueda juzgar el diseño sin leer el código, y sobre
-todo para que sepa **qué ataques no cubre**. Un modelo de amenazas que solo lista victorias no
-es un modelo de amenazas.
+This document exists so a reviewer can judge the design without reading the code, and above all
+so they know **which attacks it does not cover**. A threat model that only lists victories is
+not a threat model.
 
 ---
 
-## 0. El ataque que define el diseño
+## 0. The attack that defines the design
 
-El 30 de agosto de 2026, Tectonic —mayor protocolo de crédito de Cronos, 121,7 M en depósitos—
-fue explotado por 75 M. El mecanismo: un colateral con factor del 20% y apenas 1,34 M de
-liquidez, cuyo precio subió 100× en veinte minutos. Crypto.com detuvo la cadena entera. El
-capital era compartido entre todos los mercados, así que **un colateral malo drenó el pozo
-completo**.
+On 30 August 2026, Tectonic — the largest credit protocol on Cronos, with $121.7M in deposits —
+was exploited for $75M. The mechanism: a collateral asset with a 20% factor and barely $1.34M of
+liquidity, whose price rose 100x in twenty minutes. Crypto.com halted the entire chain. Capital
+was shared across every market, so **one bad collateral drained the whole pool**.
 
-Tres propiedades del incidente, y la respuesta de cada una:
+Three properties of the incident, and the response to each:
 
-| Propiedad de Tectonic | Respuesta en Cotejo |
+| Tectonic property | Response in Cotejo |
 |---|---|
-| Pozo compartido: un colateral malo alcanza todo el capital | Mercados aislados por `Id`; un colateral solo daña sus mercados |
-| Precio movible por una sola fuente | El router revierte por INV-2 antes de publicar (fase 1) |
-| Deuda muy superior a la liquidez que la respalda | `maxTotalBorrow` atado a la profundidad observada |
+| Shared pool: one bad collateral reaches all capital | Markets isolated by `Id`; a collateral can only damage its own markets |
+| Price movable by a single source | The router reverts on INV-2 before publishing (phase 1) |
+| Debt far exceeding the liquidity backing it | `maxTotalBorrow` tied to observed depth |
 
 ---
 
-## 1. Reglas de admisión
+## 1. Admission rules
 
-Se validan al crear el mercado y revierten. Ninguna es relajable por gobernanza.
+Validated at market creation, and they revert. None is relaxable by governance.
 
-| Regla | Qué exige | Por qué |
+| Rule | What it requires | Why |
 |---|---|---|
-| **R1** | El `oracleAdapter` apunta a rutas de Cotejo con `minSources >= 3` | Un precio de dos fuentes no tiene mediana defendible |
-| **R2** | Esas rutas tienen `>= 3` `operatorGroup` distintos | Un activo que no se puede valorar de forma independiente no puede ser colateral |
-| **R3** | `lltv <= MAX_LLTV` (86%) | Margen mínimo para que una liquidación sea viable |
-| **R4** | El `irm` está en lista blanca de implementaciones desplegadas | Acota el daño de una curva de interés arbitraria |
-| **R5** | `LIF <= min(fórmula derivada, techo absoluto)` | Ver §2 |
-| **R6** | El registro `assetId -> token` confirma que el adapter valora los tokens del mercado | Sin esto, R1 y R2 verifican una ruta que podría no ser la del colateral |
-| **R7** | Toda ruta usada por un mercado cumple `sources.length >= minSources + 2` | Ver §4 |
-| **R8** | El adapter congela la política de ruta al desplegarse; `price()` revierte si la ruta viva se debilita | Gobernanza puede endurecer, nunca relajar |
+| **R1** | The `oracleAdapter` points at Cotejo routes with `minSources >= 3` | A two-source price has no defensible median |
+| **R2** | Those routes carry `>= 3` distinct `operatorGroup`s | An asset that cannot be valued independently cannot be collateral |
+| **R3** | `lltv <= MAX_LLTV` (86%) | Minimum margin for a liquidation to be viable |
+| **R4** | The `irm` is whitelisted among deployed implementations | Bounds the damage of an arbitrary interest curve |
+| **R5** | `LIF <= min(derived formula, absolute ceiling)` | See §2 |
+| **R6** | The `assetId -> token` registry confirms the adapter prices the market's tokens | Without it, R1 and R2 verify a route that might not be the collateral's |
+| **R7** | Every route a market uses satisfies `sources.length >= minSources + 2` | See §4 |
+| **R8** | The adapter freezes route policy at deployment; `price()` reverts if the live route weakens | Governance may tighten, never loosen |
 
-### R6 es append-only, por necesidad
+### R6 is append-only, out of necessity
 
-El registro `assetId -> token` vive en el `PriceRouter`. **Una vez fijado un mapeo, no puede
-cambiar.** Si gobernanza pudiese remapear `keccak256("WBT/USD")` a otro token, todos los
-mercados creados bajo el mapeo anterior quedarían valorando un activo distinto del que
-custodian, en silencio y sin que ninguna invariante saltase. Un registro mutable convierte R6
-en decoración. Es append-only y sin función de borrado.
+The `assetId -> token` registry lives in the `PriceRouter`. **Once a mapping is set it cannot
+change.** If governance could remap `keccak256("WBT/USD")` to a different token, every market
+created under the previous mapping would silently be valuing an asset other than the one it
+custodies, with no invariant firing. A mutable registry turns R6 into decoration. It is
+append-only, with no delete function.
 
 ---
 
-## 2. Derivación de R5 — el tope de incentivo
+## 2. Deriving R5 — the incentive ceiling
 
-El incentivo de liquidación no es un parámetro de gusto: es la cantidad exacta de valor que un
-atacante puede extraer si consigue mover el precio hasta el borde de lo que la ruta tolera sin
-revertir.
+The liquidation incentive is not a matter of taste: it is the exact amount of value an attacker
+can extract if they move the price to the edge of what the route tolerates without reverting.
 
-En el límite de LLTV, la deuda es `lltv × valorColateral`. Una liquidación embolsa
-`LIF × deuda` en colateral, luego la fracción de colateral incautada es:
-
-```
-fracciónIncautada = LIF × lltv
-```
-
-La ruta puede estar equivocada hasta `deviationCombined` sin revertir — esa es precisamente la
-tolerancia que INV-2 concede. Para que la incautación no supere el colateral **real** ni en el
-peor error tolerado:
+At the LLTV limit, debt is `lltv × collateralValue`. A liquidation pockets `LIF × debt` in
+collateral, so the seized fraction of collateral is:
 
 ```
-LIF × lltv  ≤  1 − deviationCombined
+seizedFraction = LIF × lltv
+```
+
+The route may be wrong by up to `deviationCombined` without reverting — that is precisely the
+tolerance INV-2 grants. For the seizure not to exceed the **real** collateral even under the
+worst tolerated error:
+
+```
+LIF × lltv  <=  1 − deviationCombined
 
 LIF_max  =  (WAD − deviationCombined) × WAD / lltv
 ```
 
-con `deviationCombined = devColRoute + devLoanRoute`, ambas en WAD.
+with `deviationCombined = devColRoute + devLoanRoute`, both in WAD.
 
-Valores verificados numéricamente:
+Numerically verified values:
 
-| Rutas | Combinada | LLTV | `LIF_max` | Bono |
+| Routes | Combined | LLTV | `LIF_max` | Bonus |
 |---|---|---|---|---|
-| 100 + 100 bps | 200 bps | 86% | 1,139535 | **13,95%** |
-| 200 + 200 bps | 400 bps | 86% | 1,116279 | **11,63%** |
+| 100 + 100 bps | 200 bps | 86% | 1.139535 | **13.95%** |
+| 200 + 200 bps | 400 bps | 86% | 1.116279 | **11.63%** |
 
-### Dos límites que la fórmula no pone, y hacen falta igual
+### Two limits the formula does not impose, and which are needed anyway
 
-**La fórmula no protege al prestatario.** Es un techo de *seguridad*, no de *economía*. A
-LLTV 50% con rutas de 100 bps produce `LIF_max = 1,96`, es decir un bono del **96%**: el
-liquidador se lleva casi el doble de lo que repaga. Eso no extrae valor vía error de oráculo
-—que es lo que R5 vigila— pero sí exprime al prestatario. Por eso el mercado aplica
-`LIF <= min(fórmula, MAX_LIF_ABSOLUTE)`. El techo absoluto no es una estimación de riesgo de
-oráculo; es una protección distinta para un problema distinto.
+**The formula does not protect the borrower.** It is a *safety* ceiling, not an *economic* one.
+At 50% LLTV with 100 bps routes it yields `LIF_max = 1.96`, a **96%** bonus: the liquidator
+takes nearly double what they repay. That extracts no value via oracle error — which is what R5
+watches — but it does squeeze the borrower. Hence the market applies
+`LIF <= min(formula, MAX_LIF_ABSOLUTE)`. The absolute ceiling is not an oracle-risk estimate; it
+is a different protection for a different problem.
 
-**La fórmula impone un techo implícito a la tolerancia de ruta.** Cuando
-`deviationCombined >= WAD − lltv`, el `LIF_max` cae por debajo de `WAD`: el liquidador
-embolsaría menos de lo que repaga y nadie liquidaría jamás. Con LLTV 86% eso ocurre a partir de
-**1400 bps combinados**. Por encima de `WAD` la fórmula underflowea. La creación del mercado
-rechaza ambos casos explícitamente, porque un mercado sin liquidación viable no es un mercado
-conservador: es un mercado con deuda incobrable garantizada.
+**The formula imposes an implicit ceiling on route tolerance.** When
+`deviationCombined >= WAD − lltv`, `LIF_max` falls below `WAD`: the liquidator would pocket less
+than they repay and nobody would ever liquidate. At 86% LLTV that happens from **1400 combined
+bps** upward. Above `WAD` the formula underflows. Market creation rejects both cases explicitly,
+because a market with no viable liquidation is not a conservative market: it is a market with
+guaranteed bad debt.
 
 ---
 
-## 3. Modo degradado
+## 3. Degraded mode
 
-Cuando el router de la fase 1 revierte —precio obsoleto, desviación excesiva, concentración de
-operador, pausa— el mercado entra en modo degradado.
+When the phase 1 router reverts — stale price, excessive deviation, operator concentration,
+pause — the market enters degraded mode.
 
-| Operación | Estado | Razón |
+| Operation | State | Reason |
 |---|---|---|
-| `repay` | **PERMITIDO** | No requiere precio. Reducir deuda siempre es seguro |
-| `supply` | **PERMITIDO** | Añadir liquidez no puede dañar a nadie |
-| `supplyCollateral` | **PERMITIDO** | Mejora la salud de la posición |
-| `withdrawCollateral` | **PERMITIDO solo si `borrowShares == 0`** | Sin deuda no hay comprobación de solvencia que hacer |
-| `withdraw` (suministro) | **BLOQUEADO** | Ver abajo |
-| `borrow` | **BLOQUEADO** | Requiere comprobación de solvencia |
-| `liquidate` | **BLOQUEADO** | Ver abajo |
+| `repay` | **ALLOWED** | Needs no price. Reducing debt is always safe |
+| `supply` | **ALLOWED** | Adding liquidity cannot harm anyone |
+| `supplyCollateral` | **ALLOWED** | Improves position health |
+| `withdrawCollateral` | **ALLOWED only if `borrowShares == 0`** | With no debt there is no solvency check to make |
+| `withdraw` (supply) | **BLOCKED** | See below |
+| `borrow` | **BLOCKED** | Requires a solvency check |
+| `liquidate` | **BLOCKED** | See below |
 
-El interés **sigue acumulando** durante la degradación. Congelarlo premiaría a quien la
-provoca. La mitigación del riesgo de degradación prolongada es R7, no detener el reloj.
+Interest **keeps accruing** during degradation. Freezing it would reward whoever caused it. The
+mitigation for prolonged degradation is R7, not stopping the clock.
 
-### Por qué bloquear liquidaciones
+### Why liquidations are blocked
 
-Es la decisión más contraintuitiva del diseño y la que un revisor preguntará primero.
+This is the most counter-intuitive decision in the design and the one a reviewer asks about
+first.
 
-Liquidar con un precio manipulado **es** el mecanismo de extracción. En Tectonic el atacante no
-rompió el motor de liquidaciones: lo usó. Infló el precio de un colateral ilíquido y dejó que
-la maquinaria del protocolo le entregase 75 M de activos buenos a cambio de garantía inflada.
-Las liquidaciones funcionaron perfectamente; ese fue el problema.
+Liquidating at a manipulated price **is** the extraction mechanism. At Tectonic the attacker did
+not break the liquidation engine: they used it. They inflated the price of an illiquid
+collateral and let the protocol's own machinery hand them $75M of good assets in exchange for
+inflated security. The liquidations worked perfectly; that was the problem.
 
-El intercambio explícito: **preferimos deuda incobrable temporal a una liquidación basada en
-una mentira.** La deuda incobrable es acotada, socializada entre los suministradores de ese
-mercado, y recuperable si el precio vuelve. Una liquidación ejecutada a un precio falso es
-irreversible y transfiere el valor a quien fabricó la mentira.
+The explicit trade: **we prefer temporary bad debt to a liquidation based on a lie.** Bad debt is
+bounded, socialised among that market's suppliers, and recoverable if the price returns. A
+liquidation executed at a false price is irreversible and transfers the value to whoever
+manufactured the lie.
 
-### Por qué `withdraw` del suministro también se bloquea
+### Why supply `withdraw` is blocked too
 
-Permitir retirar suministro durante la degradación abre la **ventaja del primero en salir**: los
-suministradores informados retiran mientras el precio no es confiable, y la deuda incobrable
-que aparezca después se concentra en quienes quedaron. La socialización de M3 solo es justa si
-nadie puede correr antes de que se reconozca.
-
----
-
-## 4. R7 — por qué cinco fuentes y no tres
-
-Con `minSources = 3` sobre **exactamente** tres fuentes, la caída de un solo reporter produce
-`Cotejo__InsufficientSources`, el adapter revierte, y el mercado entra en modo degradado. Como
-el modo degradado bloquea liquidaciones, eso significa:
-
-> **La caída de un reporter congela el control de solvencia del mercado entero.**
-
-Es una dependencia de liveness 1-de-3 para la seguridad del protocolo, y convierte un incidente
-operativo rutinario —un proceso que se cae, una API que rate-limitea— en una parada del
-mecanismo que mantiene solvente al mercado. Peor: le da a un atacante bajo el agua un objetivo
-barato. No necesita manipular un precio; le basta con tirar un reporter.
-
-R7 exige `sources.length >= minSources + 2`. Con `minSources = 3` son **5 fuentes de 5 grupos
-de operador distintos**, y hacen falta dos caídas simultáneas para degradar.
-
-**Consecuencia para la fase 1:** el despliegue actual configura 3 grupos (`wgroup`, `binance`,
-`kraken`) con `minSources = 3`. Esa configuración **no es apta para respaldar un mercado**.
-Antes de la fase 2 hacen falta cinco `AttestationSource`, una por operador independiente.
+Allowing supply withdrawal during degradation opens the **first-mover advantage**: informed
+suppliers withdraw while the price is untrustworthy, and whatever bad debt appears afterwards
+concentrates on those who stayed. M3's socialisation is only fair if nobody can run before it is
+recognised.
 
 ---
 
-## 5. Lo que este diseño NO cubre
+## 4. R7 — why five sources and not three
 
-La parte que importa.
+With `minSources = 3` over **exactly** three sources, a single reporter going down produces
+`Cotejo__InsufficientSources`, the adapter reverts, and the market enters degraded mode. Because
+degraded mode blocks liquidations, that means:
 
-### 5.1 `depthUsd` lo declaran las partes de las que nos defendemos
+> **One reporter going down freezes solvency control for the entire market.**
 
-El tope de deuda se calcula sobre profundidades **auto-reportadas** en las atestaciones. No hay
-ninguna comprobación on-chain de que esa liquidez exista. Un conjunto de reporters coludido
-infla `depthUsd`, eleva `maxTotalBorrow`, y habilita exactamente el sobre-endeudamiento que el
-tope existe para impedir.
+That is a 1-of-3 liveness dependency for protocol safety, and it turns a routine operational
+incident — a process crashing, an API rate-limiting — into a halt of the mechanism that keeps
+the market solvent. Worse, it hands an underwater attacker a cheap target. They do not need to
+manipulate a price; knocking over one reporter is enough.
 
-Mitigaciones parciales, ninguna suficiente:
-- R2 y R7 exigen que la colusión abarque varios operadores independientes.
-- M1 tomaba el **mínimo**; ahora toma el **segundo-menor**, leído a través del router para que
-  herede INV-2 e INV-5. El intercambio es exacto y **cuesta algo real**: con el mínimo bastaba un
-  reporter honesto para acotar el tope, pero un solo reporter malicioso lo llevaba a cero y
-  bloqueaba todos los préstamos de la ruta. Con el segundo-menor hacen falta dos mentirosos para
-  inflarlo y dos para denegarlo. Ceder "basta uno honesto" solo es defendible porque A1.1 acota
-  la pérdida sin consultar a ningún reporter. Los dos se despliegan juntos o ninguno.
-- El clamp de crecimiento (2500 bps/hora) elimina la inflación instantánea justo antes de un
-  préstamo grande.
+R7 requires `sources.length >= minSources + 2`. With `minSources = 3` that is **5 sources across
+5 distinct operator groups**, and two simultaneous outages are needed to degrade.
 
-Dos defensas añadidas después de escribir este documento:
+**Consequence for phase 1, as currently deployed:** the live deployment configures five
+`AttestationSource` contracts under five distinct groups (`cotejo-keeper-1` … `cotejo-keeper-5`)
+with `minSources = 3`, so it satisfies R7 arithmetically.
 
-- **A1.1 — techo absoluto (`MAX_ADAPTER_DEBT_USD`).** Inmutable, fijado antes del despliegue,
-  aplicado por adapter. Es el **único mecanismo del diseño cuya garantía no depende de que
-  ningún reporter sea honesto**: bajo colusión total convierte una pérdida ilimitada en una
-  acotada. No impide el ataque; acota lo que vale.
-- **A1.2 — realimentación por deuda incobrable.** Cuando una liquidación deja bad debt, el
-  ancla de profundidad se recorta al 50%. La deuda incobrable es prueba on-chain de que la
-  profundidad declarada no estaba ahí: un liquidador no pudo deshacer la posición contra el
-  libro que supuestamente existía. Es la única comprobación del sistema sobre una afirmación
-  de reporter que usa evidencia que los reporters no producen. Llega después del hecho.
+It does not satisfy the property R7 exists to buy. All five keys are derived from one seed,
+held by one process, reading one venue. Two simultaneous outages are required only if the
+outages are independent, and here they are the same outage. R7 is met on paper and unmet in
+substance until five operators hold five keys. This is stated at length in
+[`keeper/README.md`](keeper/README.md) and is the single largest gap between what the contracts
+enforce and what is actually true today.
 
-Aun así, **un conjunto mayoritariamente coludido y paciente puede inflar el tope** hasta el
-techo absoluto. La raíz no tiene solución dentro de este alcance: exigiría prueba de liquidez
-on-chain, que en Whitechain testnet no existe porque no hay DEX. En mainnet, WhiteSwap
-sobrevive la migración, y añadir una fuente TWAP a la ruta **no requiere cambiar ningún
-contrato de la fase 2** — R8 solo revierte si la ruta se debilita, y añadir un operador la
-fortalece.
+---
 
-### 5.2 Bloquear liquidaciones es un vector de griefing — ahora con salida acotada
+## 5. What this design does NOT cover
 
-Un prestatario bajo el agua se beneficia de la degradación. R7 encarece provocarla, pero no la
-elimina. La salida es **A2, `liquidateDegraded`**: tras 72 h de degradación continua se abre
-una liquidación pro-rata que **no consulta ningún precio vivo**.
+The part that matters.
 
-Por qué no reabre el camino de extracción: no hay precio en la fórmula de incautación, así que
-no hay nada que manipular. Con prima cero la incautación es exactamente proporcional, lo que
-deja el ratio de colateralización **igual que estaba** — es aritméticamente neutra. Toda la
-ventaja del liquidador es la prima: máximo 10%, alcanzada solo tras 72 h más una rampa de siete
-días de fallo *continuo*, limitada a la mitad de la deuda, y exige adelantar tokens reales
-contra una posición que por definición ya está bajo el agua.
+### 5.1 `depthUsd` is declared by the very parties we defend against
 
-La elegibilidad la decide el ancla de precio, que es el único lugar donde un precio almacenado
-entra en el mercado, y obedece una regla comprobable con un `grep`:
+The debt ceiling is computed from **self-reported** depths in the attestations. There is no
+on-chain check that the liquidity exists. A colluding set of reporters inflates `depthUsd`,
+raises `maxTotalBorrow`, and enables exactly the over-borrowing the ceiling exists to prevent.
 
-> **INV-7'** — un precio almacenado solo puede *restringir* una acción. Ningún camino de código
-> puede calcular una cantidad de tokens a partir de él.
+Partial mitigations, none sufficient:
 
-Fijado en `testFuzz_A2_seizureIsIndependentOfPrice`, que varía el precio subyacente sobre 512
-ejecuciones y exige que la incautación no cambie.
+- R2 and R7 require collusion to span several independent operators.
+- M1 used to take the **minimum**; it now takes the **second-lowest**, read through the router so
+  it inherits INV-2 and INV-5. The trade is exact and **costs something real**: with the minimum,
+  one honest reporter sufficed to bound the ceiling, but one malicious reporter could drive it to
+  zero and block all borrowing on the route. With the second-lowest, two liars are needed to
+  inflate it and two to deny it. Giving up "one honest reporter is enough" is only defensible
+  because A1.1 bounds the loss without consulting any reporter at all. The two ship together or
+  neither ships.
+- The growth clamp (2500 bps/hour) removes instantaneous inflation right before a large borrow.
 
-**Lo que NO hace:** no restaura la salud. Encoger proporcionalmente una posición bajo el agua la
-deja bajo el agua. Es una válvula de liquidación ordenada, no una reparación de solvencia, y
-fingir lo contrario sería deshonesto.
+Two defences added after this document was first written:
 
-Un descuido corregido de paso: `RouteGovernor.setGuardian` era inmediato, justificado con "un
-guardián solo puede pausar, luego concederlo no puede dañar". Eso valía cuando el router estaba
-solo. Con la fase 2 es falso — pausar congela liquidaciones, que es un evento de solvencia. Así
-que **conceder** el poder de pausa ahora espera 48 h (A6.3); revocarlo sigue siendo inmediato.
+- **A1.1 — absolute ceiling (`MAX_ADAPTER_DEBT_USD`).** Immutable, fixed before deployment,
+  enforced per adapter. It is the **only mechanism in the design whose guarantee does not depend
+  on any reporter being honest**: under total collusion it turns an unbounded loss into a bounded
+  one. It does not prevent the attack; it caps what the attack is worth.
+- **A1.2 — bad-debt feedback.** When a liquidation leaves bad debt, the depth anchor is cut by
+  50%. Bad debt is on-chain proof that the declared depth was not there: a liquidator could not
+  unwind the position against the book that supposedly existed. It is the system's only check on
+  a reporter claim that uses evidence reporters do not produce. It arrives after the fact.
 
-### 5.3 Colusión total del oráculo — acotada al alza, no a la baja
+Even so, **a mostly-colluding, patient set can inflate the ceiling** up to the absolute cap. The
+root cause has no solution within this scope: it would require on-chain proof of liquidity, which
+does not exist on Whitechain testnet because there is no DEX. On mainnet, WhiteSwap survives the
+migration, and adding a TWAP source to the route **requires no phase 2 contract change** — R8
+only reverts if the route weakens, and adding an operator strengthens it.
 
-Si todos los grupos reportan el mismo precio falso, la desviación es cero y INV-2 nunca salta.
-R2 y R7 compran independencia estructural, no honestidad.
+### 5.2 Blocking liquidations is a griefing vector — now with a bounded exit
 
-**A3 cierra la dirección alcista.** El mercado guarda un ancla de precio con límite de velocidad
-y revierte `borrow` y `withdrawCollateral` si el precio vivo sube más rápido que la banda (5%
-instantáneo, +20%/hora, techo 50%). Compara contra lo que este mercado mismo vio hace un
-momento, no contra lo que dicen los otros reporters — que es exactamente lo que un consenso
-mentiroso no puede falsear. El clamp del ancla es la mitad que un revisor se salta y la que hace
-que funcione: sin él, el cortacircuitos cae en un bloque (inflas el precio, llamas a cualquier
-mutador permissionless para anclar la mentira, y pides prestado).
+An underwater borrower benefits from degradation. R7 makes causing it expensive, but does not
+eliminate it. The exit is **A2, `liquidateDegraded`**: after 72 hours of continuous degradation, a
+pro-rata liquidation opens that **consults no live price**.
 
-**La dirección bajista queda deliberadamente sin cubrir, y hay que decirlo claro.** Un
-cortacircuitos sobre un precio que cae saltaría durante un crash genuino, degradaría el mercado,
-y congelaría las liquidaciones justo cuando más importan: **fabricaría la deuda incobrable que
-dice prevenir**. La única variante segura calcularía la incautación a partir de un precio
-almacenado, violando INV-7'. Por eso `liquidate` **nunca** está sujeto a la banda — esa exención
-es la propiedad que hace seguro todo el mecanismo, y está fijada en
+Why that does not reopen the extraction path: there is no price in the seizure formula, so there
+is nothing to manipulate. At zero premium the seizure is exactly proportional, which leaves the
+collateralisation ratio **where it was** — it is arithmetically neutral. All the liquidator's edge
+is the premium: at most 10%, reached only after 72 hours plus a seven-day ramp of *continuous*
+failure, capped at half the debt, and requiring real tokens to be fronted against a position that
+is by definition already underwater.
+
+Eligibility is decided by the price anchor, which is the only place a stored price enters the
+market, and it obeys a rule you can check with a `grep`:
+
+> **INV-7′** — a stored price may only *restrict* an action. No code path may compute a token
+> amount from it.
+
+Pinned by `testFuzz_A2_seizureIsIndependentOfPrice`, which varies the underlying price across 512
+runs and requires the seizure not to change.
+
+**What it does NOT do:** it does not restore health. Shrinking an underwater position
+proportionally leaves it underwater. It is an orderly liquidation valve, not a solvency repair,
+and pretending otherwise would be dishonest.
+
+One oversight fixed along the way: `RouteGovernor.setGuardian` was immediate, justified by "a
+guardian can only pause, so granting it cannot cause harm". That held while the router stood
+alone. With phase 2 it is false — pausing freezes liquidations, which is a solvency event. So
+**granting** pause power now waits 48 hours (A6.3); revoking it remains immediate.
+
+### 5.3 Total oracle collusion — bounded upward, not downward
+
+If every group reports the same false price, deviation is zero and INV-2 never fires. R2 and R7
+buy structural independence, not honesty.
+
+**A3 closes the upward direction.** The market keeps a rate-limited price anchor and reverts
+`borrow` and `withdrawCollateral` if the live price rises faster than the band (5% instantaneous,
++20%/hour, 50% ceiling). It compares against what this market itself saw a moment ago, not
+against what other reporters say — which is exactly what a lying consensus cannot fake. The anchor
+clamp is the half a reviewer skips and the half that makes it work: without it the circuit breaker
+falls in a single block (inflate the price, call any permissionless mutator to anchor the lie,
+borrow).
+
+**The downward direction is deliberately uncovered, and that needs saying plainly.** A circuit
+breaker on a falling price would fire during a genuine crash, degrade the market, and freeze
+liquidations exactly when they matter most: **it would manufacture the bad debt it claims to
+prevent**. The only safe variant would compute the seizure from a stored price, violating INV-7′.
+That is why `liquidate` is **never** subject to the band — that exemption is the property that
+makes the whole mechanism safe, and it is pinned by
 `test_A3_liquidationIsNeverGatedByTheBand`.
 
-Así que bajo colusión total la dirección deflacionaria **no se previene**. Queda acotada por
-`MAX_ADAPTER_DEBT_USD` y por la pausa de guardián, y por nada más.
+So under total collusion the deflationary direction is **not prevented**. It is bounded by
+`MAX_ADAPTER_DEBT_USD` and by the guardian pause, and by nothing else.
 
-### 5.4 Ausencia de liquidadores
+### 5.4 Absence of liquidators
 
-`maxTotalBorrow` supone que existen liquidadores dispuestos y capitalizados. Si nadie liquida,
-el tope no salva nada: solo garantiza que la deuda *podría* deshacerse, no que se deshaga.
+`maxTotalBorrow` assumes willing, capitalised liquidators exist. If nobody liquidates, the ceiling
+saves nothing: it only guarantees the debt *could* be unwound, not that it is.
 
-### 5.5 Captura de la lista blanca de IRM
+### 5.5 IRM whitelist capture
 
-**Corrección.** La versión anterior de esta sección afirmaba que el daño máximo era un tipo de
-interés absurdo. Era falso. `IIrm.borrowRate` no es `view` y se llama desde los siete
-mutadores, así que un IRM que revierte —o un proxy repuntado más tarde a uno que revierte, o
-uno que simplemente quema todo el gas— **congelaba el mercado entero de forma permanente,
-`repay` y `liquidate` incluidos, con los fondos dentro**. Y como `irm` forma parte del `Id`,
-quitarlo de la lista blanca no rescataba un mercado ya creado: R4 es una comprobación de
-creación, nada más. Congelar es peor que un 800% de interés.
+**Correction.** An earlier version of this section claimed the worst damage was an absurd interest
+rate. That was false. `IIrm.borrowRate` is not `view` and is called from all seven mutators, so an
+IRM that reverts — or a proxy later repointed at one that reverts, or one that simply burns all
+the gas — **froze the entire market permanently, `repay` and `liquidate` included, with the funds
+inside**. And because `irm` is part of the `Id`, removing it from the whitelist did not rescue an
+already-created market: R4 is a creation-time check and nothing more. Freezing is worse than 800%
+interest.
 
-Cerrado con tres capas:
+Closed with three layers:
 
-- **A5.1.** La llamada va con `try/catch` y `IRM_GAS_LIMIT = 150 000`, el mismo patrón que
-  `PriceRouter._readSource` aplica a las fuentes y por la misma razón: sin tope de gas, la
-  regla 63/64 deja al llamante sin poder terminar y el `try/catch` pasa a ser el vector de
-  denegación en vez de la protección. Un modelo que falla significa 0% de interés en ese
-  intervalo, que es recuperable.
-- **A5.2.** `ReentrancyGuard` en todos los mutadores. Un IRM de la lista blanca tenía un punto
-  de reentrada dentro de `borrow` y `liquidate`, y lo único que lo impedía era confiar en la
-  lista blanca — precisamente lo que esta amenaza asume comprometido.
-- Queda pendiente el timelock sobre la lista blanca (A5.3). Compra poco por sí solo: R4 es de
-  creación, así que revocar no afecta a mercados vivos.
+- **A5.1.** The call is wrapped in `try/catch` with `IRM_GAS_LIMIT = 150,000`, the same pattern
+  `PriceRouter._readSource` applies to sources and for the same reason: without a gas cap, the
+  63/64 rule leaves the caller unable to finish and the `try/catch` becomes the denial vector
+  instead of the protection. A failing model means 0% interest for that interval, which is
+  recoverable.
+- **A5.2.** `ReentrancyGuard` on every mutator. A whitelisted IRM had a reentry point inside
+  `borrow` and `liquidate`, and the only thing preventing it was trusting the whitelist —
+  precisely what this threat assumes compromised.
+- A timelock on the whitelist (A5.3) is still outstanding. It buys little on its own: R4 is
+  creation-time, so revoking does not affect live markets.
 
-### 5.6 MEV y competencia por liquidaciones
+### 5.6 MEV and liquidation competition
 
-Sandwiching de liquidaciones, prioridad de gas, y captura del incentivo por buscadores no se
-abordan. El close factor del 50% limita el tamaño por operación, no quién la captura.
+Liquidation sandwiching, gas priority, and incentive capture by searchers are not addressed. The
+50% close factor limits the size per operation, not who captures it.
 
-### 5.7 Tokens no estándar
+### 5.7 Non-standard tokens
 
-M6 valida por delta de balance en toda entrada, así que fee-on-transfer y rebasing **fallan en
-el primer uso** en vez de corromper la contabilidad en silencio. Eso los detecta; no los
-soporta. Un token con rebase positivo deja fondos huérfanos en el contrato.
+M6 validates by balance delta on every entry, so fee-on-transfer and rebasing tokens **fail on
+first use** instead of silently corrupting accounting. That detects them; it does not support
+them. A positively-rebasing token leaves orphaned funds in the contract.
 
-### 5.8 Riesgo de la migración L1 → L2
+### 5.8 L1 → L2 migration risk
 
-Al migrar, el estado se conserva pero el chain ID cambia. Dos consecuencias:
-- Las atestaciones EIP-712 firmadas antes de la migración dejan de validar. Es correcto, pero
-  la flota de reporters debe reconfigurarse el mismo día.
-- El chain ID de L2 Mainnet **aún no está publicado**, así que no puede fijarse por adelantado.
+On migration, state is preserved but the chain id changes. Two consequences:
 
-M7 elimina el riesgo relacionado: no se usa `block.number` en ningún cálculo temporal, porque
-bloques de 1 s y un cambio de cadena convierten cualquier lógica por número de bloque en una
-bomba de relojería.
+- EIP-712 attestations signed before the migration stop validating. That is correct, but the
+  reporters must be reconfigured the same day.
+- The L2 Mainnet chain id is **not yet published**, so it cannot be fixed in advance.
 
-### 5.9 Riesgo de gobernanza sobre la ruta
+M7 removes the related risk: `block.number` is used in no temporal calculation, because 1-second
+blocks plus a chain change turn any block-number logic into a time bomb.
 
-R8 impide que una ruta se debilite bajo un mercado vivo. Gobernanza sigue pudiendo **pausar** el
-activo, lo que degrada el mercado y congela liquidaciones.
+### 5.9 Route governance risk
 
-**Un mecanismo cubre las dos amenazas.** Una pausa de guardián y una caída de reporters son
-indistinguibles en el adapter: ambas hacen revertir `price()`, ambas arrancan el mismo reloj, y
-ambas abren `liquidateDegraded` tras 72 h. Fijado en
-`test_A2_guardianPauseAlsoOpensTheWindDown`. Además, conceder el poder de pausa ahora espera 48 h
-(A6.3), así que un owner comprometido no puede fabricarse un guardián en el mismo bloque.
+R8 prevents a route from weakening under a live market. Governance can still **pause** the asset,
+which degrades the market and freezes liquidations.
 
-### 5.10 Lo explícitamente fuera de alcance en v1
+**One mechanism covers both threats.** A guardian pause and a reporter outage are
+indistinguishable at the adapter: both make `price()` revert, both start the same clock, and both
+open `liquidateDegraded` after 72 hours. Pinned by `test_A2_guardianPauseAlsoOpensTheWindDown`.
+Additionally, granting pause power now waits 48 hours (A6.3), so a compromised owner cannot
+manufacture themselves a guardian in the same block.
 
-Flash loans, colateral cruzado, token de gobernanza, y cualquier función que permita cambiar el
-`lltv` de un mercado existente. Esto último no es una omisión: escribirla reintroduciría el
-problema que todo el diseño evita.
+### 5.10 Explicitly out of scope in v1
+
+Flash loans, cross-market collateral, a governance token, and any function that allows changing an
+existing market's `lltv`. The last one is not an omission: writing it would reintroduce the
+problem the entire design avoids.
 
 ---
 
-## 6. Invariantes verificadas en tests
+## 6. Invariants verified in tests
 
-| Invariante | Test |
+| Invariant | Test |
 |---|---|
-| La suma de deuda de prestatarios nunca supera el total prestado | `invariant_borrowSharesNeverExceedTotal` |
-| Ningún mercado toca el colateral de otro | `invariant_marketsNeverShareCollateral` |
-| `totalBorrow` nunca supera `maxTotalBorrow` tras una operación exitosa | `invariant_borrowNeverExceedsDepthCap` |
-| El redondeo siempre favorece al protocolo | `testFuzz_roundingFavoursProtocol` |
-| R2 rechaza colateral con oráculo concentrado | `test_R2_rejectsCollateralWithConcentratedOracle` |
-| El ataque de Tectonic no funciona | `test_TectonicReplay` |
-| Una caída de profundidad bloquea préstamos, no habilita liquidaciones | `test_DepthCapBlocksBorrowNotLiquidation` |
+| The sum of borrower debt never exceeds the total borrowed | `invariant_borrowSharesNeverExceedTotal` |
+| No market touches another's collateral | `invariant_marketsNeverShareCollateral` |
+| `totalBorrow` never exceeds `maxTotalBorrow` after a successful operation | `invariant_borrowNeverExceedsDepthCap` |
+| Rounding always favours the protocol | `testFuzz_supplyRoundTripNeverFavoursTheUser`<br>`testFuzz_borrowRoundTripNeverFavoursTheUser` |
+| R2 rejects collateral with a concentrated oracle | `test_R2_rejectsCollateralWithConcentratedOracle` |
+| The Tectonic attack does not work | `test_TectonicReplay` |
+| A depth drop blocks borrowing, it does not enable liquidations | `test_DepthCapBlocksBorrowNotLiquidation` |

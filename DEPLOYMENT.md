@@ -5,6 +5,34 @@ compruebe que funciona sin confiar en nosotros.
 
 ---
 
+## 0. Acciones pendientes con fecha
+
+Horas en **Santiago de Chile (UTC−3**, horario de verano desde el 6 de septiembre de 2026). El
+reloj que manda es el de la cadena, en UTC; la columna local existe para no calcularla a mano a
+las tres de la mañana.
+
+| # | Acción | Santiago | UTC | Bloqueo |
+|---|---|---|---|---|
+| 1 | `03_ExecuteRoutes` — instala la ruta WBT/USD | **dom 20 sep, 12:19** | 20 sep 15:19 | Timelock de 48 h de `RouteGovernor` |
+| 2 | Ejecutar la concesión del guardián | **dom 20 sep, 19:23** | 20 sep 22:23 | Timelock de 48 h (A6.3) |
+| 3 | Publicar el panel | después de 1 | — | Sin sentido antes: hasta la ruta, el panel muestra `Cotejo__RouteNotConfigured` |
+
+Las dos primeras son permissionless una vez vencido el timelock: cualquiera puede ejecutarlas,
+no hacen falta privilegios. Lo que no se puede es adelantarlas.
+
+Hay **7 horas entre los dos timelocks** porque la ruta se encoló antes que el guardián. En este
+despliegue no importa —sin mercado desplegado, una pausa no defendería nada— pero el orden
+correcto es al revés: encolar primero el guardián, para que la capacidad de parar exista antes
+que la capacidad de servir.
+
+Comando de la acción 1, en una sola línea:
+
+```powershell
+forge script script/03_ExecuteRoutes.s.sol:ExecuteRoutes --rpc-url https://rpc.testnet.whitechain.io --account cotejo-deployer --broadcast --slow
+```
+
+---
+
 ## 1. Parámetros de red confirmados
 
 Verificados contra `docs.whitechain.io/learn/network/reference` **y** contra el propio RPC, no

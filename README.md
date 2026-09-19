@@ -426,5 +426,3 @@ For multi-file verification, if `--verify` fails, use Blockscout's `standard-inp
 ceiling. That section is the most useful thing in this repository for anyone deciding whether
 to trust it.
 
-It is currently written in Spanish, which makes it unreadable to most of the people it is aimed
-at. That is a real gap and it is being closed.
