@@ -135,8 +135,15 @@ satisface sus propias reglas de admisión, y la regla no se debilita para que qu
 
 El bucle local dura lo que dure la sesión de terminal. Desde las **23:07 UTC del
 18 de septiembre de 2026** el latido lo publica
-[`.github/workflows/keeper.yml`](.github/workflows/keeper.yml) en el cron de
-GitHub, cada 10 minutos. Ahí arranca el reloj de uptime que la solicitud cita.
+[`.github/workflows/keeper.yml`](.github/workflows/keeper.yml) en GitHub
+Actions. Ahí arranca el reloj de uptime que la solicitud cita.
+
+Ese primer diseño pedía el latido al planificador de GitHub, con un cron de diez
+minutos. **Disparó una vez en 4 h 48 min**, y la observación en cadena llegó a
+tener 2 h 44 min contra una tolerancia de 1800 s. Corregido el 19 de septiembre:
+ahora un proceso vive 5 h 45 min marcando su propio ritmo de 900 s y al cron solo
+se le pide que aterrice una vez dentro de esa ventana. El detalle y el porqué
+están en [`keeper/README.md`](keeper/README.md).
 
 Primer ciclo alojado, confirmado con `cast receipt` (`status = 1` en las cinco) y
 releyendo las fuentes con `latestObservation`, no fiándose del log:
