@@ -11,11 +11,32 @@ Horas en **Santiago de Chile (UTC−3**, horario de verano desde el 6 de septiem
 reloj que manda es el de la cadena, en UTC; la columna local existe para no calcularla a mano a
 las tres de la mañana.
 
-| # | Acción | Santiago | UTC | Bloqueo |
+| # | Acción | Santiago | UTC | Estado |
 |---|---|---|---|---|
-| 1 | `03_ExecuteRoutes` — instala la ruta WBT/USD | **dom 20 sep, 12:19** | 20 sep 15:19 | Timelock de 48 h de `RouteGovernor` |
-| 2 | Ejecutar la concesión del guardián | **dom 20 sep, 19:23** | 20 sep 22:23 | Timelock de 48 h (A6.3) |
-| 3 | Publicar el panel | después de 1 | — | Sin sentido antes: hasta la ruta, el panel muestra `Cotejo__RouteNotConfigured` |
+| 1 | `03_ExecuteRoutes` — instala la ruta WBT/USD | dom 20 sep, 12:19 | 20 sep 15:19 | **HECHO** 15:21 UTC |
+| 2 | Ejecutar la concesión del guardián | **dom 20 sep, 19:23** | 20 sep 22:23 | pendiente — timelock A6.3 |
+| 3 | Publicar la página pública | ya desbloqueado | — | pendiente — `site/index.html` |
+
+### El oráculo empezó a servir, 15:21 UTC
+
+Transacción [`0x19384cca…6d96f`](https://explorer.testnet.whitechain.io/tx/0x19384cca0b5cbf91e46ffbb857e3569f317c3858e0c0f0ec529d51106ae5d96f),
+bloque 8321339, 288 909 gas a 5 gwei = 0,00144 WBT. Leído de la cadena, no del log:
+
+```
+router    latestPrice(WBT/USD)  ->  82332500000000000000  18 dec
+adapter   latestRoundData()     ->          8233250000    8 dec  = 82,33250000
+updatedAt                             1789916905
+```
+
+Los dos valores coinciden: el adaptador reescala de 18 a 8 decimales correctamente. `updatedAt`
+es la observación **más antigua** del conjunto, no la más nueva.
+
+Un detalle de coste, consistente con lo medido en la fase 1: forge estimó 10 gwei y la red cobró
+5. La estimación duplica sistemáticamente en esta cadena.
+
+Durante las 48 h anteriores el adaptador revirtió con `Cotejo__RouteNotConfigured`. Eso no fue
+una espera muerta: fue el sistema funcionando. Había contratos desplegados y precios reales
+llegando, y aun así no había respuesta defendible que dar, así que no dio ninguna.
 
 Las dos primeras son permissionless una vez vencido el timelock: cualquiera puede ejecutarlas,
 no hacen falta privilegios. Lo que no se puede es adelantarlas.

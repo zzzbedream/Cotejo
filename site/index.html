@@ -278,6 +278,7 @@ const ADAPTER = "0xc7624150c28bF26cdF920A0715a7c0ba614faE16";
 
 const SEL_OBS   = "0xa2fb18c1"; // latestObservation(bytes32)
 const SEL_ROUND = "0xfeaf968c"; // latestRoundData()
+const SEL_DEC   = "0x313ce567"; // decimals()
 
 // Selectors verified against src/libraries/CotejoErrors.sol, including parameters.
 // An error signature without its parameters hashes to a different selector, which
@@ -355,15 +356,21 @@ function addrTable(){
 async function readRouterState(){
   const state = document.getElementById("state"), gloss = document.getElementById("gloss");
   try{
-    const out = await call(ADAPTER, SEL_ROUND);
+    /* The adapter rescales the router's 18 decimals to whatever its consumer
+       asked for, so its decimals are read rather than assumed. Assuming 18 here
+       printed 0.000000008233250000 for a price of 82.33 — a wrong number
+       rendered at display scale, which is the worst place on the page for one. */
+    const [out, decHex] = await Promise.all([call(ADAPTER, SEL_ROUND), call(ADAPTER, SEL_DEC)]);
     const w = words(out);
+    const dec = Number(big(words(decHex)[0]));
     const answer = BigInt.asIntN(256, big(w[1]));
     const updatedAt = big(w[3]);
-    put(state, fixed(answer, 18, 6));
+    put(state, fixed(answer, dec, 4));
     state.classList.remove("vm");
-    gloss.innerHTML = `<span class="d">latestRoundData()</span> returned a price. `
-      + `Observed at <span class="d">${updatedAt}</span> — the oldest observation in the set, so a consumer `
-      + `measures freshness against the weakest link.`;
+    gloss.innerHTML = `<span class="d">latestRoundData()</span> returned a price, rescaled by the adapter from the `
+      + `router's 18 decimals to <span class="d">${dec}</span>. Observed at <span class="d">${updatedAt}</span> — `
+      + `the <em>oldest</em> observation in the set, so a consumer measures freshness against the weakest link, `
+      + `not the freshest one.`;
   }catch(err){
     const sel = revertSelector(err);
     const name = ERRORS[sel];

@@ -26,21 +26,38 @@ Blockscout:
 Five sources publish real WBT/USD prices derived from the WhiteBIT order book, relayed from
 GitHub Actions rather than from anybody's laptop.
 
-**And `latestRoundData()` reverts.** `Cotejo__RouteNotConfigured`: the contracts exist and the
-data is arriving, but no route is installed yet, because installing one takes a 48-hour
-timelock that has not elapsed. An oracle that returned a number in this state would be the
-problem, not the progress.
+The route went live on **20 September 2026 at 15:21 UTC**, after the full 48-hour
+`RouteGovernor` timelock
+([`0x19384cca…6d96f`](https://explorer.testnet.whitechain.io/tx/0x19384cca0b5cbf91e46ffbb857e3569f317c3858e0c0f0ec529d51106ae5d96f)).
+`latestRoundData()` now returns a price:
+
+```
+router   82332500000000000000  18 decimals
+adapter          8233250000   8 decimals  = 82.33250000 WBT/USD
+updatedAt        1789916905   the OLDEST observation in the set
+```
+
+For the two days before that it reverted with `Cotejo__RouteNotConfigured`, and that was the
+system working. The contracts were deployed and real prices were arriving, but no route was
+installed, so there was no defensible answer to give and it gave none. An oracle that had
+returned a number in that state would have been the problem, not the progress.
+
+Note which timestamp comes back. `updatedAt` is the **oldest** observation across the set, not
+the newest, so a consumer measures freshness against the weakest link. Reporting the freshest
+would make a route look healthier than it is.
 
 **The lending market is written, tested, and deliberately not deployed.** Its admission rules
 are checked at `createMarket` and none is relaxable by governance: R1 requires the adapter to
 point at routes with `minSources >= 3`, R2 requires those routes to carry at least three
 distinct operator groups, R7 requires `sources.length >= minSources + 2`, and R8 freezes the
-route policy at deployment so governance can tighten it but never loosen it. Every one of them
-reads a **live route**, and no route is installed yet. The market cannot be deployed until the
-oracle it depends on is actually serving — which is the ordering the rules exist to enforce.
+route policy at deployment so governance can tighten it but never loosen it.
 
-Once the route executes, the five deployed sources satisfy R1, R2 and R7 on their face. They
-will not satisfy them in substance, for the reason immediately below.
+With the route live, **the five deployed sources satisfy R1, R2 and R7 on their face**, so the
+rules no longer block deployment. What blocks it is judgement, which is a weaker guarantee than
+a rule and is stated here as such: the independence those rules are buying is nominal, for the
+reason immediately below, and deploying a lending market on an oracle with nominal independence
+is precisely the mistake `THREAT_MODEL.md` spends section 4 describing. The market ships when
+five operators hold five keys.
 
 ## What the live deployment does not prove
 

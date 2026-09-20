@@ -19,7 +19,7 @@
     "governorBound": true,
     "assetsEnabled": true,
     "routesProposed": false,
-    "routesExecuted": false
+    "routesExecuted": true
   },
   "routeParams": {
     "minSources": 3,
