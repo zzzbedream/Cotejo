@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cotejo — Public Record</title>
+<meta name="description" content="A price oracle on Whitechain Sepolia that is safe because it refuses to answer. Every figure on this page is read from the chain when you load it.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400;6..96,500&family=IBM+Plex+Serif:ital,wght@0,400;0,500;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --stock:#F2EFE7;         /* bone paper. the page. */
+  --ink:#1A1A17;           /* near-black, green-brown cast */
+  --ink-70:rgba(26,26,23,.70);
+  --ink-45:rgba(26,26,23,.45);
+  --rule:rgba(26,26,23,.20);
+  --rule-strong:rgba(26,26,23,.55);
+  --vermillion:#C2321B;    /* correction ink. refusal only. */
+  --display:"Bodoni Moda",Georgia,serif;
+  --prose:"IBM Plex Serif",Georgia,serif;
+  --data:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  --gutter:clamp(16px,4vw,64px);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--stock);color:var(--ink);
+  font-family:var(--prose);font-size:16px;line-height:1.55;
+  font-variant-numeric:tabular-nums;
+}
+.wrap{max-width:1180px;margin:0 auto;padding:0 var(--gutter)}
+hr.rule{border:0;border-top:1px solid var(--rule);margin:0}
+hr.rule--strong{border-top:1px solid var(--rule-strong)}
+
+/* every number, address, hash, timestamp and error name */
+.d{font-family:var(--data);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.lbl{font-family:var(--data);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-45)}
+.vm{color:var(--vermillion)}
+
+a{color:inherit;text-decoration:underline;text-underline-offset:2px;text-decoration-thickness:1px}
+a:hover{text-decoration-thickness:2px}
+
+/* ---------- masthead ---------- */
+.mast{display:grid;grid-template-columns:1fr auto;gap:32px;align-items:end;padding:clamp(28px,5vw,64px) 0 18px}
+.mast h1{font-family:var(--display);font-weight:500;font-size:clamp(44px,7vw,84px);line-height:.92;margin:0;letter-spacing:-.02em}
+.mast .thesis{font-size:clamp(15px,1.5vw,19px);margin:12px 0 0;max-width:34ch;font-style:italic;color:var(--ink-70)}
+.meta{display:grid;grid-template-columns:auto auto;gap:3px 18px;align-items:baseline}
+.meta .v{font-family:var(--data);font-size:12px}
+
+/* ---------- the one grid break ---------- */
+.break{padding:clamp(40px,8vw,104px) 0 clamp(28px,5vw,64px)}
+.break .state{
+  font-family:var(--display);font-weight:400;
+  /* sized off the viewport so a long error name never clips */
+  font-size:clamp(26px,7.1vw,96px);
+  line-height:1.02;letter-spacing:-.03em;margin:0;
+  overflow-wrap:anywhere;
+}
+.break .gloss{font-family:var(--data);font-size:12px;color:var(--ink-70);margin:20px 0 0;max-width:62ch}
+
+/* ---------- sections ---------- */
+section{padding:clamp(30px,4.5vw,56px) 0}
+.shead{display:flex;justify-content:space-between;align-items:baseline;gap:16px;margin:0 0 14px}
+.shead h2{font-family:var(--data);font-weight:500;font-size:12px;letter-spacing:.13em;text-transform:uppercase;margin:0}
+.note{font-size:13.5px;color:var(--ink-70);max-width:74ch;margin:12px 0 0}
+
+table{width:100%;border-collapse:collapse;font-family:var(--data);font-size:12px}
+thead th{
+  text-align:left;font-weight:500;font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-45);padding:0 10px 7px 0;border-bottom:1px solid var(--rule-strong);white-space:nowrap
+}
+tbody td{padding:9px 10px 9px 0;border-bottom:1px solid var(--rule);white-space:nowrap}
+tbody tr:last-child td{border-bottom:1px solid var(--rule-strong)}
+tbody tr{transition:none}
+tbody tr:hover{background:var(--ink);color:var(--stock)}
+tbody tr:hover a{color:var(--stock)}
+tbody tr:hover .lbl{color:rgba(242,239,231,.6)}
+td.num,th.num{text-align:right;padding-right:0}
+.tscroll{overflow-x:auto}
+
+/* ---------- 02: the limitation ---------- */
+.limit{display:grid;grid-template-columns:minmax(260px,.85fr) minmax(0,1.15fr);gap:clamp(24px,5vw,64px);align-items:start}
+.bigfig{font-family:var(--display);font-size:clamp(56px,10vw,128px);line-height:.85;margin:0;letter-spacing:-.035em}
+.limit p{margin:0 0 14px;max-width:62ch}
+ol.foot{margin:26px 0 0;padding:0;list-style:none;counter-reset:fn}
+ol.foot li{counter-increment:fn;position:relative;padding-left:26px;font-size:12.5px;color:var(--ink-70);margin:0 0 7px;max-width:76ch}
+ol.foot li::before{content:"[" counter(fn) "]";position:absolute;left:0;top:0;font-family:var(--data);font-size:10px;color:var(--ink-45)}
+
+/* ---------- 03: measured band ---------- */
+.band{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--rule-strong);border-bottom:1px solid var(--rule-strong)}
+.band>div{padding:18px 18px 16px;border-left:1px solid var(--rule)}
+.band>div:first-child{border-left:0;padding-left:0}
+.band .f{font-family:var(--data);font-weight:500;font-size:clamp(20px,2.7vw,30px);line-height:1;letter-spacing:-.02em}
+.band .lbl{display:block;margin-top:9px}
+
+/* ---------- 04: flow ---------- */
+.flow{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-top:1px solid var(--rule-strong);border-bottom:1px solid var(--rule-strong)}
+.stage{padding:16px 18px 18px;border-left:1px solid var(--rule);position:relative}
+.stage:first-child{border-left:0;padding-left:0}
+.stage h3{font-family:var(--data);font-size:11px;letter-spacing:.13em;text-transform:uppercase;margin:0 0 10px;font-weight:700}
+.stage ul{margin:0;padding:0;list-style:none}
+.stage li{font-family:var(--data);font-size:11px;color:var(--ink-70);margin:0 0 5px;line-height:1.4}
+.stage li::before{content:"— ";color:var(--ink-45)}
+.flowgloss{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(24px,5vw,64px);margin-top:22px}
+
+footer{padding:22px 0 56px;display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap}
+
+@media (max-width:860px){
+  .mast{grid-template-columns:1fr;align-items:start;gap:22px}
+  .limit,.flowgloss{grid-template-columns:1fr}
+  .band,.flow{grid-template-columns:1fr 1fr}
+  .band>div,.stage{border-left:1px solid var(--rule);padding-left:16px}
+  .band>div:nth-child(odd),.stage:nth-child(odd){border-left:0;padding-left:0}
+  .stage{border-top:1px solid var(--rule)}
+  .stage:nth-child(-n+2){border-top:0}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="mast">
+    <div>
+      <h1>Cotejo</h1>
+      <p class="thesis">A price oracle that is safe because it refuses to answer.</p>
+    </div>
+    <div class="meta">
+      <span class="lbl">Network</span><span class="v">Whitechain Sepolia</span>
+      <span class="lbl">Chain&nbsp;id</span><span class="v" id="m-chain">—</span>
+      <span class="lbl">Block</span><span class="v" id="m-block">—</span>
+      <span class="lbl">Read at</span><span class="v" id="m-read">—</span>
+    </div>
+  </header>
+  <hr class="rule--strong rule">
+
+  <!-- the only dramatic gesture on this page -->
+  <div class="break">
+    <div class="lbl" style="margin-bottom:18px">Router · WBT/USD · live</div>
+    <p class="state d" id="state">reading…</p>
+    <p class="gloss" id="gloss">Querying <span class="d">latestRoundData()</span> on the deployed adapter.</p>
+  </div>
+  <hr class="rule">
+
+  <section>
+    <div class="shead">
+      <h2>01 — Live state</h2>
+      <span class="lbl" id="poll">reading…</span>
+    </div>
+    <div class="tscroll">
+      <table>
+        <thead><tr>
+          <th>Source</th><th>Reporter</th><th class="num">Price</th><th class="num">Depth USD</th>
+          <th class="num">Observed at</th><th class="num">Age</th><th class="num">Status</th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <p class="note">Every value above is read from <span class="d">latestObservation(bytes32)</span> on each deployed
+      source when this page loads. Nothing is cached, stored or served by this page. If a cell is empty the read
+      failed, and that is shown rather than filled in.</p>
+  </section>
+  <hr class="rule">
+
+  <section>
+    <div class="shead"><h2>02 — What this does not prove</h2></div>
+    <div class="limit">
+      <div>
+        <p class="bigfig d" id="dev">—</p>
+        <div class="lbl" style="margin-top:14px">Measured deviation across the five<br>sources · route tolerance 200 bps</div>
+      </div>
+      <div>
+        <p>The five sources publish identical values because one process reads one order book and signs
+          five times with five keys derived from one seed. That is arithmetic, not luck.</p>
+        <p><strong>So INV&#8209;2, the deviation check, cannot fire here.</strong> Five signatures over one number
+          cannot disagree with each other. The invariant is not broken — it is idle, and it stays idle until the
+          five prices come from five places.</p>
+        <p>A healthy readout above therefore demonstrates aggregation, staleness, quorum and
+          operator&#8209;concentration running against real data. It demonstrates nothing about deviation, which is
+          the check people assume demonstrates everything.</p>
+        <ol class="foot">
+          <li>The operator groups are named <span class="d">cotejo-keeper-1…5</span>. They claim no venue and imply
+            no relationship with anyone. Independence is enforced by the contracts and is not yet real.</li>
+          <li>The debt ceiling in phase 2 is computed from depth figures the reporters declare themselves. There is
+            no on-chain proof that the liquidity exists.</li>
+          <li>The price is sourced from a <span class="d">WBT_USDT</span> order book and the oracle prices
+            <span class="d">WBT/USD</span>. On testnet that is an accepted stand-in, stated rather than papered over.</li>
+        </ol>
+      </div>
+    </div>
+  </section>
+  <hr class="rule">
+
+  <section>
+    <div class="shead">
+      <h2>03 — Heartbeat, measured</h2>
+      <span class="lbl">from chain logs, not from the keeper's own log</span>
+    </div>
+    <div class="band">
+      <div><span class="f">104</span><span class="lbl">Attestations</span></div>
+      <div><span class="f">906 s</span><span class="lbl">Median gap</span></div>
+      <div><span class="f">907 s</span><span class="lbl">Maximum gap</span></div>
+      <div><span class="f">0</span><span class="lbl">Gaps over 1800 s</span></div>
+    </div>
+    <p class="note">Counted from <span class="d">AttestationAccepted</span> events on source 1 over the 24.7 hours
+      ending 2026&#8209;09&#8209;20 14:30 UTC, against a configured 900&nbsp;s heartbeat and an 1800&nbsp;s staleness
+      tolerance. The window begins after 2026&#8209;09&#8209;19 03:52 UTC and deliberately excludes the night before
+      it, when a ten-minute cron fired once in 4h48m and left the observation 2h44m stale. That failure is recorded
+      in <a href="https://github.com/zzzbedream/Cotejo/blob/main/keeper/README.md">keeper/README.md</a> rather than
+      averaged away here.</p>
+  </section>
+  <hr class="rule">
+
+  <section>
+    <div class="shead"><h2>04 — How a price flows</h2></div>
+    <div class="flow">
+      <div class="stage"><h3>Reporters</h3><ul>
+        <li>EIP&#8209;712 signed</li><li>submit() is permissionless</li><li>the signature authorises, not the caller</li></ul></div>
+      <div class="stage"><h3>Sources</h3><ul>
+        <li>rejects a future observedAt</li><li>rejects replays</li><li>requires strict advance</li><li>requires minimum depth</li></ul></div>
+      <div class="stage"><h3>Router</h3><ul>
+        <li>drops a source that reverts</li><li>reverts on any stale source</li><li>reverts below minSources</li>
+        <li>reverts on operator concentration</li><li>reverts above the deviation band</li></ul></div>
+      <div class="stage"><h3>Adapter</h3><ul>
+        <li>exact AggregatorV3Interface</li><li>rescales to consumer decimals</li>
+        <li>reverts rather than rounding to 0</li><li>getRoundData always reverts</li></ul></div>
+    </div>
+    <div class="flowgloss">
+      <p class="note" style="margin:0">The asymmetry in the router is deliberate and is the decision most often
+        questioned: <strong>a source that reverts is dropped, but a source that answers with stale data reverts the
+        whole read.</strong> A missing source is a missing source, and <span class="d">minSources</span> decides
+        whether enough remain.</p>
+      <p class="note" style="margin:0">A source that answers with old data is evidence that something upstream is
+        broken, and reading past that is how an oracle serves a number nobody should act on. The returned
+        <span class="d">observedAt</span> is the <em>oldest</em> in the set, so a consumer measures against the
+        weakest link.</p>
+    </div>
+  </section>
+  <hr class="rule">
+
+  <section>
+    <div class="shead"><h2>05 — Deployed and verified</h2></div>
+    <p class="note" style="margin:0 0 14px">Verifiable on the public explorer without trusting this page.</p>
+    <div class="tscroll"><table>
+      <thead><tr><th>Contract</th><th>Address</th><th class="num">Code</th></tr></thead>
+      <tbody id="addrs"></tbody>
+    </table></div>
+  </section>
+  <hr class="rule">
+
+  <footer>
+    <span class="d" style="font-size:11px"><a href="https://github.com/zzzbedream/Cotejo">github.com/zzzbedream/Cotejo</a></span>
+    <span class="d" style="font-size:11px;color:var(--ink-45)">Public record · read live from chain 1874 · no figure on this page is stored by it</span>
+  </footer>
+</div>
+
+<script>
+const RPC = "https://rpc.testnet.whitechain.io";
+const EXPLORER = "https://explorer.testnet.whitechain.io";
+const CHAIN_ID = 1874;
+const ASSET = "b1ddfc4c2ff889f1a864945784030c0fce452eadccb3f877b497e9f51019bf26";
+
+const SOURCES = [
+  ["cotejo-keeper-1","0x78cce8C167583bf358B3EA1c9C409e13A7Da691a"],
+  ["cotejo-keeper-2","0x5886F06c5cD7eC7E07396D4787fca22A965032C5"],
+  ["cotejo-keeper-3","0x5eD6fe0C2bF02227153CC5482f7d316475a11625"],
+  ["cotejo-keeper-4","0x8A65a9ae5057eB846ce06c1E890f0aB8ADB05777"],
+  ["cotejo-keeper-5","0x99D1beDEa8d628b2Bd1Cd136F3348d1d680D6682"],
+];
+const CONTRACTS = [
+  ["PriceRouter","0xB4f9C2151B73eDEa730A72e9642C971d803Fd096"],
+  ["RouteGovernor","0x116a41d02bF43f7c15D9DB8EC3e0fDccAE55341D"],
+  ["CotejoAggregatorAdapter · WBT/USD","0xc7624150c28bF26cdF920A0715a7c0ba614faE16"],
+  ...SOURCES.map(([g,a])=>["AttestationSource · "+g,a]),
+];
+const ADAPTER = "0xc7624150c28bF26cdF920A0715a7c0ba614faE16";
+
+const SEL_OBS   = "0xa2fb18c1"; // latestObservation(bytes32)
+const SEL_ROUND = "0xfeaf968c"; // latestRoundData()
+
+// Selectors verified against src/libraries/CotejoErrors.sol, including parameters.
+// An error signature without its parameters hashes to a different selector, which
+// is how a plausible-looking wrong name gets printed on a page like this one.
+const ERRORS = {
+  "0xf13fd686":"Cotejo__RouteNotConfigured",
+  "0x21fdeffa":"Cotejo__StalePrice",
+  "0xc29c85f3":"Cotejo__InsufficientSources",
+  "0xa600329d":"Cotejo__DeviationExceeded",
+  "0xab9e8327":"Cotejo__Paused",
+  "0x3e1c6679":"Cotejo__OperatorConcentration",
+  "0xd56f46cf":"Cotejo__NoPrice",
+  "0xb4d21aa8":"Cotejo__AssetNotSupported",
+  "0x9c2e6b60":"Cotejo__ZeroPrice",
+};
+
+async function rpc(method, params){
+  const res = await fetch(RPC,{method:"POST",headers:{"content-type":"application/json"},
+    body:JSON.stringify({jsonrpc:"2.0",id:1,method,params})});
+  const j = await res.json();
+  if(j.error){ const e=new Error(j.error.message||"rpc error"); e.rpcData=j.error.data; throw e; }
+  return j.result;
+}
+const call = (to,data)=>rpc("eth_call",[{to,data},"latest"]);
+
+/* A revert arrives in different shapes depending on the node. Take the first
+   thing that looks like return data; never guess a name from the message text. */
+function revertSelector(err){
+  let d = err && err.rpcData;
+  if(d && typeof d==="object") d = d.data || (d.originalError && d.originalError.data);
+  if(typeof d==="string" && d.startsWith("0x") && d.length>=10) return d.slice(0,10).toLowerCase();
+  const m = /0x[0-9a-fA-F]{8,}/.exec((err&&err.message)||"");
+  return m ? m[0].slice(0,10).toLowerCase() : null;
+}
+const words = h => { const s=h.slice(2); const o=[]; for(let i=0;i+64<=s.length;i+=64) o.push(s.slice(i,i+64)); return o; };
+const big = w => BigInt("0x"+w);
+const addr = w => "0x"+w.slice(24);
+const short = a => a.slice(0,6)+"…"+a.slice(-4);
+
+function fixed(v, dec, places){
+  const base = 10n ** BigInt(dec);
+  const whole = v / base;
+  const frac = (v % base).toString().padStart(dec,"0").slice(0,places);
+  return whole.toString().replace(/\B(?=(\d{3})+(?!\d))/g,",") + (places?"."+frac:"");
+}
+const commas = v => v.toString().replace(/\B(?=(\d{3})+(?!\d))/g,",");
+function ago(s){
+  s = Number(s);
+  if(s<60) return s+" s";
+  if(s<3600) return Math.floor(s/60)+" m "+(s%60)+" s";
+  return Math.floor(s/3600)+" h "+Math.floor((s%3600)/60)+" m";
+}
+const STALE_AFTER = 1800n;
+
+/* A value that changes flickers once, the way a segment display settles. */
+function put(el, text){
+  if(!el || el.textContent === text) return;
+  el.textContent = text;
+  el.animate([{opacity:.25},{opacity:1}],{duration:110,easing:"steps(2,end)"});
+}
+
+function addrTable(){
+  document.getElementById("addrs").innerHTML = CONTRACTS.map(([n,a])=>
+    `<tr><td>${n}</td><td><a href="${EXPLORER}/address/${a}" rel="noopener">${a}</a></td>
+     <td class="num" data-code="${a}">…</td></tr>`).join("");
+  CONTRACTS.forEach(async ([,a])=>{
+    const cell = document.querySelector(`[data-code="${a}"]`);
+    try{
+      const code = await rpc("eth_getCode",[a,"latest"]);
+      put(cell, code && code.length>2 ? ((code.length-2)/2).toLocaleString("en-US")+" bytes" : "no code");
+    }catch{ put(cell,"unread"); }
+  });
+}
+
+async function readRouterState(){
+  const state = document.getElementById("state"), gloss = document.getElementById("gloss");
+  try{
+    const out = await call(ADAPTER, SEL_ROUND);
+    const w = words(out);
+    const answer = BigInt.asIntN(256, big(w[1]));
+    const updatedAt = big(w[3]);
+    put(state, fixed(answer, 18, 6));
+    state.classList.remove("vm");
+    gloss.innerHTML = `<span class="d">latestRoundData()</span> returned a price. `
+      + `Observed at <span class="d">${updatedAt}</span> — the oldest observation in the set, so a consumer `
+      + `measures freshness against the weakest link.`;
+  }catch(err){
+    const sel = revertSelector(err);
+    const name = ERRORS[sel];
+    put(state, name || "unreadable");
+    state.classList.add("vm");
+    gloss.innerHTML = name
+      ? `The oracle is refusing to return a price, and that is the correct behaviour. `
+        + `The adapter reverted with a typed error, selector <span class="d">${sel}</span>. `
+        + (name==="Cotejo__RouteNotConfigured"
+            ? `The contracts are deployed and the data is arriving; no route is installed yet, because installing `
+              + `one takes a 48&#8209;hour timelock. An oracle that returned a number in this state would be the problem.`
+            : `A consumer calling this would revert rather than act on a number it should not trust.`)
+      : `The adapter reverted and this page could not decode the selector. It is printing that, rather than a guess.`;
+  }
+}
+
+async function readSources(){
+  const now = BigInt(Math.floor(Date.now()/1000));
+  const tbody = document.getElementById("rows");
+  const prices = [];
+  const rows = await Promise.all(SOURCES.map(async ([group,address])=>{
+    try{
+      const out = await call(address, SEL_OBS + ASSET);
+      const w = words(out);
+      const price = big(w[0]), dec = Number(big(w[1])), obs = big(w[2]), depth = big(w[3]);
+      const reporter = addr(w[4]);
+      const age = now > obs ? now - obs : 0n;
+      prices.push(price);
+      const stale = age > STALE_AFTER;
+      return `<tr>
+        <td>${group}</td>
+        <td><a href="${EXPLORER}/address/${reporter}" rel="noopener">${short(reporter)}</a></td>
+        <td class="num">${fixed(price,dec,4)}</td>
+        <td class="num">${commas(depth)}</td>
+        <td class="num">${obs}</td>
+        <td class="num">${ago(age)}</td>
+        <td class="num${stale?" vm":""}">${stale?"STALE":"FRESH"}</td></tr>`;
+    }catch(err){
+      const sel = revertSelector(err);
+      return `<tr><td>${group}</td><td colspan="5" class="vm">${ERRORS[sel]||"read failed"}</td>
+        <td class="num vm">NO DATA</td></tr>`;
+    }
+  }));
+  tbody.innerHTML = rows.join("");
+
+  const dev = document.getElementById("dev");
+  if(prices.length >= 3){
+    const s = prices.slice().sort((a,b)=> a<b?-1:a>b?1:0);
+    const median = s[Math.floor(s.length/2)];
+    const bps = median > 0n ? ((s[s.length-1]-s[0]) * 10000n * 100n) / median : 0n;
+    put(dev, (Number(bps)/100).toFixed(2) + " bps");
+    dev.classList.toggle("vm", bps > 200n*100n);
+  }else{
+    put(dev,"—"); dev.classList.add("vm");
+  }
+}
+
+async function tick(){
+  try{
+    const [idHex, block] = await Promise.all([rpc("eth_chainId",[]), rpc("eth_getBlockByNumber",["latest",false])]);
+    const id = Number(BigInt(idHex));
+    const m = document.getElementById("m-chain");
+    put(m, String(id));
+    m.classList.toggle("vm", id !== CHAIN_ID);
+    put(document.getElementById("m-block"), commas(BigInt(block.number)));
+    put(document.getElementById("m-read"), new Date().toISOString().replace("T"," ").slice(0,19)+" UTC");
+    if(id !== CHAIN_ID){
+      document.getElementById("poll").textContent = "wrong chain — refusing to display";
+      return;
+    }
+    await Promise.all([readRouterState(), readSources()]);
+    document.getElementById("poll").textContent = "read " + new Date().toISOString().slice(11,19) + " UTC · refreshes every 30 s";
+  }catch(e){
+    document.getElementById("poll").textContent = "RPC unreachable — nothing is being substituted";
+  }
+}
+tick(); addrTable(); setInterval(tick, 30000);
+</script>
+</body>
+</html>

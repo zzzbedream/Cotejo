@@ -33,3 +33,6 @@ skills-lock.json
 
 # Foundry lockfile is environment-specific here
 foundry.lock
+
+# Stitch design scratch (mockups with invented data, never the deliverable)
+.stitch/
