@@ -26,6 +26,12 @@ Blockscout:
 Five sources publish real WBT/USD prices derived from the WhiteBIT order book, relayed from
 GitHub Actions rather than from anybody's laptop.
 
+**Live record: [cotejo-oracle.vercel.app](https://cotejo-oracle.vercel.app)** — one static page
+with no backend. Every figure on it is read from chain 1874 in the reader's own browser when the
+page loads; nothing is cached, stored or served by the page, and a read that fails prints as a
+read that failed. Its largest element is whatever `latestRoundData()` returns, which for the
+first two days was a typed revert set at display scale.
+
 The route went live on **20 September 2026 at 15:21 UTC**, after the full 48-hour
 `RouteGovernor` timelock
 ([`0x19384cca…6d96f`](https://explorer.testnet.whitechain.io/tx/0x19384cca0b5cbf91e46ffbb857e3569f317c3858e0c0f0ec529d51106ae5d96f)).
